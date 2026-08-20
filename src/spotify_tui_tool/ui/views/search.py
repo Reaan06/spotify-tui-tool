@@ -1,6 +1,6 @@
 """Search view — search input and results.
 
-Phase 1 of spotatui integration.
+Stub: search requires the Spotify Web API.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from textual.widgets import Input, Static
 
 
 class SearchView(Widget):
-    """Search with input and results tabs."""
+    """Search with input — stub for Web API integration."""
 
     DEFAULT_CSS = """
     SearchView {
@@ -29,4 +29,5 @@ class SearchView(Widget):
         yield Static("[bold]Search[/bold]")
         yield Input(placeholder="Search tracks, albums, artists...", id="search-input")
         yield Static("")
-        yield Static("[dim]Enter a search query above[/dim]")
+        yield Static("[dim]Search requires the Spotify Web API.[/dim]")
+        yield Static("[dim]Paste a Spotify URI or URL to play via playerctl.[/dim]")

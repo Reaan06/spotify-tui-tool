@@ -1,6 +1,7 @@
 """Content area — view switching and display.
 
-Phase 1 of spotatui integration.  Manages switching between views.
+Manages switching between views. Uses actual view widgets instead of
+the placeholder ContentView.
 """
 
 from __future__ import annotations
@@ -10,26 +11,13 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-
-class ContentView(Widget):
-    """A placeholder view for content."""
-
-    DEFAULT_CSS = """
-    ContentView {
-        height: 100%;
-        width: 100%;
-        padding: 1 2;
-    }
-    """
-
-    def __init__(self, title: str, content: str = "", **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.title_text = title
-        self.content_text = content
-
-    def compose(self) -> ComposeResult:
-        yield Static(f"[bold]{self.title_text}[/bold]")
-        yield Static(self.content_text)
+from spotify_tui_tool.ui.views.help import HelpView
+from spotify_tui_tool.ui.views.home import HomeView
+from spotify_tui_tool.ui.views.library import LibraryView
+from spotify_tui_tool.ui.views.playlists import PlaylistsView
+from spotify_tui_tool.ui.views.queue import QueueView
+from spotify_tui_tool.ui.views.search import SearchView
+from spotify_tui_tool.ui.views.settings import SettingsView
 
 
 class ContentArea(Widget):
@@ -44,19 +32,19 @@ class ContentArea(Widget):
 
     current_view: reactive[str] = reactive("home")
 
-    VIEW_CONTENT = {
-        "home": ("Home", "Recently played tracks will appear here."),
-        "library": ("Library", "Your liked songs will appear here."),
-        "playlists": ("Playlists", "Your playlists will appear here."),
-        "search": ("Search", "Search for tracks, albums, artists."),
-        "queue": ("Queue", "Your play queue will appear here."),
-        "settings": ("Settings", "Configure your preferences."),
-        "help": ("Help", "Press ? for keybinding reference."),
+    VIEW_WIDGETS = {
+        "home": HomeView,
+        "library": LibraryView,
+        "playlists": PlaylistsView,
+        "search": SearchView,
+        "queue": QueueView,
+        "settings": SettingsView,
+        "help": HelpView,
     }
 
     def compose(self) -> ComposeResult:
-        title, content = self.VIEW_CONTENT.get(self.current_view, ("Home", ""))
-        yield ContentView(title, content, id="current-view")
+        widget_cls = self.VIEW_WIDGETS.get(self.current_view, HomeView)
+        yield widget_cls(id="current-view")
 
     async def switch_view(self, view: str) -> None:
         """Switch to a different view."""
@@ -73,5 +61,5 @@ class ContentArea(Widget):
             pass
 
         # Mount new view
-        title, content = self.VIEW_CONTENT.get(view, ("Home", ""))
-        await self.mount(ContentView(title, content, id="current-view"))
+        widget_cls = self.VIEW_WIDGETS.get(view, HomeView)
+        await self.mount(widget_cls(id="current-view"))

@@ -1,7 +1,7 @@
 """Spotify TUI App — main Textual application.
 
 Integrates the 3-panel UI layout with Sidebar, ContentArea, and Playbar.
-Keeps existing playerctl integration and NowPlaying polling.
+Uses SpotifyClient for all data access and polls playerctl every 1000ms.
 
 Keybindings:
     Space       Play/Pause
@@ -34,14 +34,18 @@ from spotify_tui_tool.exceptions import (
     PlayerctlNotFoundError,
     SpotifyNotRunningError,
 )
-from spotify_tui_tool.now_playing import NowPlaying
+from spotify_tui_tool.models import PlaybackStatus
 from spotify_tui_tool.playerctl import PlayerController
 from spotify_tui_tool.search import SearchService
+from spotify_tui_tool.spotify_client import SpotifyClient
 from spotify_tui_tool.state import AppState
 from spotify_tui_tool.ui.content import ContentArea
 from spotify_tui_tool.ui.layout import LayoutManager
 from spotify_tui_tool.ui.playbar import Playbar
 from spotify_tui_tool.ui.sidebar import Sidebar
+from spotify_tui_tool.ui.views.home import HomeView
+from spotify_tui_tool.ui.views.queue import QueueView
+from spotify_tui_tool.ui.views.settings import SettingsView
 
 
 # ------------------------------------------------------------------
@@ -81,9 +85,11 @@ class SpotifyTuiApp(App):
 
     def __init__(self, player_name: str = "spotify") -> None:
         super().__init__()
-        self._player = PlayerController(player_name=player_name)
-        self._search_service = SearchService(player=self._player)
-        self._now_playing = NowPlaying(player=self._player, poll_interval=1.0)
+        self._client = SpotifyClient(
+            player=PlayerController(player_name=player_name),
+            poll_interval=1.0,
+        )
+        self._search_service = SearchService(player=self._client.player)
         self._poll_timer: Timer | None = None
         self._state = AppState()
         self._config = Config.load()
@@ -104,10 +110,7 @@ class SpotifyTuiApp(App):
         layout.query_one("#playbar").mount(playbar)
         layout.query_one("#content").mount(content)
 
-        self._poll_timer = self.set_interval(
-            self._now_playing.poll_interval,
-            self._poll_metadata,
-        )
+        self._poll_timer = self.set_interval(1.0, self._poll_metadata)
         self._poll_metadata()
         self._show_status("Ready. Press / to search, ? for help.")
 
@@ -127,12 +130,36 @@ class SpotifyTuiApp(App):
             pass
 
     def _poll_metadata(self) -> None:
-        """Poll playerctl for current track metadata."""
-        info = self._now_playing.poll_once()
+        """Poll playerctl for current track metadata and update all views."""
+        info = self._client.poll()
+        is_playing = info.status == PlaybackStatus.PLAYING
+
+        # Update playbar
         try:
             playbar = self.query_one(Playbar)
-            playbar.update_track(info, info.status.value == "PLAYING")
+            playbar.update_track(info, is_playing)
             playbar.volume = info.volume
+        except Exception:
+            pass
+
+        # Update home view
+        try:
+            home = self.query_one(HomeView)
+            home.update_track(info, is_playing)
+        except Exception:
+            pass
+
+        # Update queue view
+        try:
+            queue = self.query_one(QueueView)
+            queue.update_queue(self._client.get_queue())
+        except Exception:
+            pass
+
+        # Update settings view
+        try:
+            settings = self.query_one(SettingsView)
+            settings.update_config(self._config)
         except Exception:
             pass
 
@@ -142,7 +169,7 @@ class SpotifyTuiApp(App):
 
     def action_play_pause(self) -> None:
         try:
-            self._player.play_pause()
+            self._client.play_pause()
             self._show_status("Toggled play/pause")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)
@@ -151,7 +178,7 @@ class SpotifyTuiApp(App):
 
     def action_next_track(self) -> None:
         try:
-            self._player.next()
+            self._client.next_track()
             self._show_status("Next track")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)
@@ -160,7 +187,7 @@ class SpotifyTuiApp(App):
 
     def action_previous_track(self) -> None:
         try:
-            self._player.previous()
+            self._client.previous_track()
             self._show_status("Previous track")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)
@@ -169,9 +196,9 @@ class SpotifyTuiApp(App):
 
     def action_volume_up(self) -> None:
         try:
-            current = self._player.get_volume()
+            current = self._client.get_volume()
             new_vol = min(current + 0.1, 1.0)
-            self._player.set_volume(new_vol)
+            self._client.set_volume(new_vol)
             self._show_status(f"Volume: {int(new_vol * 100)}%")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)
@@ -180,9 +207,9 @@ class SpotifyTuiApp(App):
 
     def action_volume_down(self) -> None:
         try:
-            current = self._player.get_volume()
+            current = self._client.get_volume()
             new_vol = max(current - 0.1, 0.0)
-            self._player.set_volume(new_vol)
+            self._client.set_volume(new_vol)
             self._show_status(f"Volume: {int(new_vol * 100)}%")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)
@@ -191,7 +218,7 @@ class SpotifyTuiApp(App):
 
     def action_seek_forward(self) -> None:
         try:
-            self._player.run("position", f"+{self._config.seek_milliseconds}")
+            self._client.seek(self._config.seek_milliseconds)
             self._show_status(f"Seek +{self._config.seek_milliseconds}ms")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)
@@ -200,7 +227,7 @@ class SpotifyTuiApp(App):
 
     def action_seek_backward(self) -> None:
         try:
-            self._player.run("position", f"-{self._config.seek_milliseconds}")
+            self._client.seek(-self._config.seek_milliseconds)
             self._show_status(f"Seek -{self._config.seek_milliseconds}ms")
         except SpotifyNotRunningError:
             self._show_status("Spotify is not running", is_error=True)

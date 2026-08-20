@@ -1,17 +1,17 @@
 """Library view — liked songs.
 
-Phase 1 of spotatui integration.
+Stub: liked songs are not available via playerctl.
 """
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.widget import Widget
-from textual.widgets import DataTable, Static
+from textual.widgets import Static
 
 
 class LibraryView(Widget):
-    """Liked songs library."""
+    """Liked songs library — stub message."""
 
     DEFAULT_CSS = """
     LibraryView {
@@ -23,8 +23,6 @@ class LibraryView(Widget):
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]Liked Songs[/bold]")
-        table = DataTable()
-        table.add_columns("#", "Title", "Artist", "Album", "Duration")
-        # Placeholder row
-        table.add_row("1", "No liked songs yet", "—", "—", "--:--")
-        yield table
+        yield Static("")
+        yield Static("[dim]Liked songs not available via playerctl.[/dim]")
+        yield Static("[dim]Use the Spotify app or a Web API client to manage likes.[/dim]")

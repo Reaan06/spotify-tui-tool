@@ -1,29 +1,11 @@
-"""Tests for ContentArea and ContentView components."""
+"""Tests for ContentArea component."""
 
 import asyncio
 import unittest
 
 from textual.app import App, ComposeResult
 
-from spotify_tui_tool.ui.content import ContentArea, ContentView
-
-
-class TestContentView(unittest.TestCase):
-    """Test ContentView can be instantiated."""
-
-    def test_import(self):
-        from spotify_tui_tool.ui.content import ContentView
-        self.assertTrue(callable(ContentView))
-
-    def test_instantiate(self):
-        view = ContentView("Title", "Content text")
-        self.assertIsNotNone(view)
-        self.assertEqual(view.title_text, "Title")
-        self.assertEqual(view.content_text, "Content text")
-
-    def test_default_content_empty(self):
-        view = ContentView("Title")
-        self.assertEqual(view.content_text, "")
+from spotify_tui_tool.ui.content import ContentArea
 
 
 class _ContentTestApp(App):
@@ -57,7 +39,7 @@ class TestContentArea(unittest.TestCase):
 
     def test_view_content_keys(self):
         expected = {"home", "library", "playlists", "search", "queue", "settings", "help"}
-        self.assertEqual(set(ContentArea.VIEW_CONTENT.keys()), expected)
+        self.assertEqual(set(ContentArea.VIEW_WIDGETS.keys()), expected)
 
     @unittest.skip(
         "Source bug: switch_view() calls old.remove() synchronously but remove() "

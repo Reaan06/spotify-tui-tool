@@ -1,6 +1,6 @@
 """Playlists view — playlist list.
 
-Phase 1 of spotatui integration.
+Stub: playlist browsing requires the Spotify Web API.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from textual.widgets import Static
 
 
 class PlaylistsView(Widget):
-    """Playlist list."""
+    """Playlist list — stub message."""
 
     DEFAULT_CSS = """
     PlaylistsView {
@@ -24,4 +24,5 @@ class PlaylistsView(Widget):
     def compose(self) -> ComposeResult:
         yield Static("[bold]Playlists[/bold]")
         yield Static("")
-        yield Static("[dim](No playlists)[/dim]")
+        yield Static("[dim]Playlist browsing not available via playerctl.[/dim]")
+        yield Static("[dim]Use spotatui or the Spotify Web API for playlist management.[/dim]")

@@ -42,7 +42,7 @@ class TestAppInstantiation(unittest.TestCase):
     def test_custom_player_name(self):
         """A custom player_name should be passed to PlayerController."""
         app = SpotifyTuiApp(player_name="spotifyd")
-        self.assertEqual(app._player.player_name, "spotifyd")
+        self.assertEqual(app._client._player.player_name, "spotifyd")
 
 
 class TestAppActions(unittest.TestCase):
@@ -53,56 +53,56 @@ class TestAppActions(unittest.TestCase):
 
     @patch.object(SpotifyTuiApp, 'query_one')
     def test_play_pause_action(self, mock_query):
-        """action_play_pause should call player.play_pause."""
+        """action_play_pause should call client.play_pause."""
         mock_status = MagicMock()
         mock_query.return_value = mock_status
-        self.app._player = MagicMock()
+        self.app._client = MagicMock()
         self.app.action_play_pause()
-        self.app._player.play_pause.assert_called_once()
+        self.app._client.play_pause.assert_called_once()
 
     @patch.object(SpotifyTuiApp, 'query_one')
     def test_next_track_action(self, mock_query):
-        """action_next_track should call player.next."""
+        """action_next_track should call client.next_track."""
         mock_status = MagicMock()
         mock_query.return_value = mock_status
-        self.app._player = MagicMock()
+        self.app._client = MagicMock()
         self.app.action_next_track()
-        self.app._player.next.assert_called_once()
+        self.app._client.next_track.assert_called_once()
 
     @patch.object(SpotifyTuiApp, 'query_one')
     def test_previous_track_action(self, mock_query):
-        """action_previous_track should call player.previous."""
+        """action_previous_track should call client.previous_track."""
         mock_status = MagicMock()
         mock_query.return_value = mock_status
-        self.app._player = MagicMock()
+        self.app._client = MagicMock()
         self.app.action_previous_track()
-        self.app._player.previous.assert_called_once()
+        self.app._client.previous_track.assert_called_once()
 
     @patch.object(SpotifyTuiApp, 'query_one')
     def test_volume_up_action(self, mock_query):
         """action_volume_up should increase volume by 0.1."""
         mock_status = MagicMock()
         mock_query.return_value = mock_status
-        self.app._player = MagicMock()
-        self.app._player.get_volume.return_value = 0.5
+        self.app._client = MagicMock()
+        self.app._client.get_volume.return_value = 0.5
         self.app.action_volume_up()
-        self.app._player.set_volume.assert_called_once_with(0.6)
+        self.app._client.set_volume.assert_called_once_with(0.6)
 
     @patch.object(SpotifyTuiApp, 'query_one')
     def test_volume_down_action(self, mock_query):
         """action_volume_down should decrease volume by 0.1."""
         mock_status = MagicMock()
         mock_query.return_value = mock_status
-        self.app._player = MagicMock()
-        self.app._player.get_volume.return_value = 0.5
+        self.app._client = MagicMock()
+        self.app._client.get_volume.return_value = 0.5
         self.app.action_volume_down()
-        self.app._player.set_volume.assert_called_once_with(0.4)
+        self.app._client.set_volume.assert_called_once_with(0.4)
 
     @patch.object(SpotifyTuiApp, '_show_status')
     def test_play_pause_spotify_not_running(self, mock_status):
         """action_play_pause should show error when Spotify is not running."""
-        self.app._player = MagicMock()
-        self.app._player.play_pause.side_effect = SpotifyNotRunningError()
+        self.app._client = MagicMock()
+        self.app._client.play_pause.side_effect = SpotifyNotRunningError()
         self.app.action_play_pause()
         mock_status.assert_called_with("Spotify is not running", is_error=True)
 
