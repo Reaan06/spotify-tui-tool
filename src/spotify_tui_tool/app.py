@@ -1,16 +1,22 @@
 """Spotify TUI App — main Textual application.
 
-Phase 5 of the MVP.  Combines NowPlaying widget, search input, and
-transport controls into a full-screen TUI.
+Integrates the 3-panel UI layout with Sidebar, ContentArea, and Playbar.
+Keeps existing playerctl integration and NowPlaying polling.
 
-Keybindings (vim-style):
+Keybindings:
     Space       Play/Pause
-    n / l       Next track
-    p / h       Previous track
-    j / k       Volume down/up
-    /           Focus search input
-    Enter       Play URI (when search focused)
-    q / Ctrl+C  Quit
+    n           Next track
+    p           Previous track
+    +/-         Volume up/down
+    </>         Seek backward/forward
+    F           Like/Unlike
+    /           Search
+    1-6         Switch views (home/library/playlists/search/queue/settings)
+    j/k         Sidebar navigation (up/down)
+    h/l         Sidebar/Content focus toggle
+    Esc         Back to home
+    q           Quit
+    ?           Help
 """
 
 from __future__ import annotations
@@ -18,10 +24,10 @@ from __future__ import annotations
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
 from textual.timer import Timer
-from textual.widgets import Footer, Header, Input, Label, Static
+from textual.widgets import Footer, Header, Input
 
+from spotify_tui_tool.config import Config
 from spotify_tui_tool.exceptions import (
     InvalidURIError,
     PlaybackError,
@@ -31,81 +37,11 @@ from spotify_tui_tool.exceptions import (
 from spotify_tui_tool.now_playing import NowPlaying
 from spotify_tui_tool.playerctl import PlayerController
 from spotify_tui_tool.search import SearchService
-
-
-# ------------------------------------------------------------------
-# Custom widgets
-# ------------------------------------------------------------------
-
-class NowPlayingPanel(Static):
-    """Displays current track metadata and playback status."""
-
-    DEFAULT_CSS = """
-    NowPlayingPanel {
-        height: 7;
-        padding: 0 1;
-        background: $surface;
-        border: solid $primary;
-    }
-    """
-
-    def update_display(self, info) -> None:
-        """Update the panel with a TrackInfo object."""
-        if not info or (not info.artist and not info.title):
-            self.update("[dim]No track playing[/dim]")
-            return
-
-        status_icon = {
-            "PLAYING": "▶",
-            "PAUSED": "⏸",
-            "STOPPED": "⏹",
-        }.get(info.status.value, "?")
-
-        # Format duration
-        if info.duration_ms > 0:
-            duration_s = info.duration_ms // 1000
-            position_s = info.position_ms // 1000
-            dur_min, dur_sec = divmod(duration_s, 60)
-            pos_min, pos_sec = divmod(position_s, 60)
-            time_str = f"{pos_min}:{pos_sec:02d}/{dur_min}:{dur_sec:02d}"
-        else:
-            time_str = "--:--/--:--"
-
-        # Progress bar (0-20 chars)
-        if info.duration_ms > 0:
-            progress = min(info.position_ms / info.duration_ms, 1.0)
-            bar_len = 20
-            filled = int(progress * bar_len)
-            bar = "█" * filled + "░" * (bar_len - filled)
-        else:
-            bar = "░" * 20
-
-        volume_pct = int(info.volume * 100)
-
-        lines = [
-            f" {status_icon} [bold]{info.artist}[/bold] — [italic]{info.title}[/italic]",
-            f"   Album: {info.album or '[dim]N/A[/dim]'}",
-            f"   {bar} {time_str}  Vol: {volume_pct}%",
-        ]
-        self.update("\n".join(lines))
-
-
-class StatusBar(Static):
-    """Bottom status bar for notifications and errors."""
-
-    DEFAULT_CSS = """
-    StatusBar {
-        height: 1;
-        background: $surface;
-        color: $text;
-    }
-    """
-
-    def show_message(self, text: str, is_error: bool = False) -> None:
-        if is_error:
-            self.update(f"[bold red]Error:[/bold red] {text}")
-        else:
-            self.update(text)
+from spotify_tui_tool.state import AppState
+from spotify_tui_tool.ui.content import ContentArea
+from spotify_tui_tool.ui.layout import LayoutManager
+from spotify_tui_tool.ui.playbar import Playbar
+from spotify_tui_tool.ui.sidebar import Sidebar
 
 
 # ------------------------------------------------------------------
@@ -116,31 +52,31 @@ class SpotifyTuiApp(App):
     """Textual app for controlling SpotX-patched Spotify via playerctl."""
 
     TITLE = "Spotify TUI"
-    CSS = """
-    #now-playing {
-        height: 7;
-    }
-    #search-container {
-        height: 3;
-        padding: 0 1;
-    }
-    #search-input {
-        width: 100%;
-    }
-    #status-bar {
-        height: 1;
-    }
-    """
 
     BINDINGS = [
         Binding("space", "play_pause", "Play/Pause", show=True),
         Binding("n", "next_track", "Next", show=True),
         Binding("p", "previous_track", "Previous", show=True),
-        Binding("k", "volume_up", "Vol +", show=True),
-        Binding("j", "volume_down", "Vol -", show=True),
+        Binding("equal", "volume_up", "Vol +", show=True),
+        Binding("minus", "volume_down", "Vol -", show=True),
+        Binding("less_than", "seek_backward", "Seek -", show=True),
+        Binding("greater_than", "seek_forward", "Seek +", show=True),
+        Binding("f", "like", "Like", show=True),
         Binding("slash", "focus_search", "Search", show=True),
+        Binding("1", "view_home", "Home", show=True),
+        Binding("2", "view_library", "Library", show=True),
+        Binding("3", "view_playlists", "Playlists", show=True),
+        Binding("4", "view_search", "Search View", show=True),
+        Binding("5", "view_queue", "Queue", show=True),
+        Binding("6", "view_settings", "Settings", show=True),
+        Binding("j", "sidebar_down", "Down", show=False),
+        Binding("k", "sidebar_up", "Up", show=False),
+        Binding("h", "focus_sidebar", "Sidebar", show=False),
+        Binding("l", "focus_content", "Content", show=False),
+        Binding("escape", "back", "Back", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("ctrl+c", "quit", "Quit", show=False),
+        Binding("question", "help", "Help", show=True),
     ]
 
     def __init__(self, player_name: str = "spotify") -> None:
@@ -149,86 +85,208 @@ class SpotifyTuiApp(App):
         self._search_service = SearchService(player=self._player)
         self._now_playing = NowPlaying(player=self._player, poll_interval=1.0)
         self._poll_timer: Timer | None = None
+        self._state = AppState()
+        self._config = Config.load()
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical():
-            yield NowPlayingPanel(id="now-playing")
-            with Horizontal(id="search-container"):
-                yield Label("URI: ")
-                yield Input(placeholder="spotify:track:... or open.spotify.com/...", id="search-input")
-            yield StatusBar(id="status-bar")
+        yield LayoutManager()
         yield Footer()
 
     def on_mount(self) -> None:
-        """Start polling when the app mounts."""
+        """Mount UI components into layout slots and start polling."""
+        layout = self.query_one(LayoutManager)
+        sidebar = Sidebar()
+        playbar = Playbar()
+        content = ContentArea()
+
+        layout.query_one("#sidebar").mount(sidebar)
+        layout.query_one("#playbar").mount(playbar)
+        layout.query_one("#content").mount(content)
+
         self._poll_timer = self.set_interval(
             self._now_playing.poll_interval,
             self._poll_metadata,
         )
-        self._poll_metadata()  # Initial poll
-        self.query_one(StatusBar).show_message("Ready. Press / to search, Space to play/pause.")
+        self._poll_metadata()
+        self._show_status("Ready. Press / to search, ? for help.")
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _show_status(self, text: str, is_error: bool = False) -> None:
+        """Update the playbar or log a status message."""
+        try:
+            playbar = self.query_one(Playbar)
+            if is_error:
+                playbar.query_one("#controls-area").update(f"[red]{text}[/red]")
+            else:
+                playbar.query_one("#controls-area").update(text)
+        except Exception:
+            pass
 
     def _poll_metadata(self) -> None:
         """Poll playerctl for current track metadata."""
         info = self._now_playing.poll_once()
-        self.query_one(NowPlayingPanel).update_display(info)
+        try:
+            playbar = self.query_one(Playbar)
+            playbar.update_track(info, info.status.value == "PLAYING")
+            playbar.volume = info.volume
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
-    # Actions (keybindings)
+    # Transport actions
     # ------------------------------------------------------------------
 
     def action_play_pause(self) -> None:
         try:
             self._player.play_pause()
-            self.query_one(StatusBar).show_message("Toggled play/pause")
+            self._show_status("Toggled play/pause")
         except SpotifyNotRunningError:
-            self.query_one(StatusBar).show_message("Spotify is not running", is_error=True)
+            self._show_status("Spotify is not running", is_error=True)
         except PlaybackError as e:
-            self.query_one(StatusBar).show_message(str(e), is_error=True)
+            self._show_status(str(e), is_error=True)
 
     def action_next_track(self) -> None:
         try:
             self._player.next()
-            self.query_one(StatusBar).show_message("Next track")
+            self._show_status("Next track")
         except SpotifyNotRunningError:
-            self.query_one(StatusBar).show_message("Spotify is not running", is_error=True)
+            self._show_status("Spotify is not running", is_error=True)
         except PlaybackError as e:
-            self.query_one(StatusBar).show_message(str(e), is_error=True)
+            self._show_status(str(e), is_error=True)
 
     def action_previous_track(self) -> None:
         try:
             self._player.previous()
-            self.query_one(StatusBar).show_message("Previous track")
+            self._show_status("Previous track")
         except SpotifyNotRunningError:
-            self.query_one(StatusBar).show_message("Spotify is not running", is_error=True)
+            self._show_status("Spotify is not running", is_error=True)
         except PlaybackError as e:
-            self.query_one(StatusBar).show_message(str(e), is_error=True)
+            self._show_status(str(e), is_error=True)
 
     def action_volume_up(self) -> None:
         try:
             current = self._player.get_volume()
             new_vol = min(current + 0.1, 1.0)
             self._player.set_volume(new_vol)
-            self.query_one(StatusBar).show_message(f"Volume: {int(new_vol * 100)}%")
+            self._show_status(f"Volume: {int(new_vol * 100)}%")
         except SpotifyNotRunningError:
-            self.query_one(StatusBar).show_message("Spotify is not running", is_error=True)
+            self._show_status("Spotify is not running", is_error=True)
         except PlaybackError as e:
-            self.query_one(StatusBar).show_message(str(e), is_error=True)
+            self._show_status(str(e), is_error=True)
 
     def action_volume_down(self) -> None:
         try:
             current = self._player.get_volume()
             new_vol = max(current - 0.1, 0.0)
             self._player.set_volume(new_vol)
-            self.query_one(StatusBar).show_message(f"Volume: {int(new_vol * 100)}%")
+            self._show_status(f"Volume: {int(new_vol * 100)}%")
         except SpotifyNotRunningError:
-            self.query_one(StatusBar).show_message("Spotify is not running", is_error=True)
+            self._show_status("Spotify is not running", is_error=True)
         except PlaybackError as e:
-            self.query_one(StatusBar).show_message(str(e), is_error=True)
+            self._show_status(str(e), is_error=True)
+
+    def action_seek_forward(self) -> None:
+        try:
+            self._player.run("position", f"+{self._config.seek_milliseconds}")
+            self._show_status(f"Seek +{self._config.seek_milliseconds}ms")
+        except SpotifyNotRunningError:
+            self._show_status("Spotify is not running", is_error=True)
+        except PlaybackError as e:
+            self._show_status(str(e), is_error=True)
+
+    def action_seek_backward(self) -> None:
+        try:
+            self._player.run("position", f"-{self._config.seek_milliseconds}")
+            self._show_status(f"Seek -{self._config.seek_milliseconds}ms")
+        except SpotifyNotRunningError:
+            self._show_status("Spotify is not running", is_error=True)
+        except PlaybackError as e:
+            self._show_status(str(e), is_error=True)
+
+    def action_like(self) -> None:
+        self._show_status("Like/Unlike — not yet implemented")
+
+    # ------------------------------------------------------------------
+    # View switching
+    # ------------------------------------------------------------------
+
+    def action_view_home(self) -> None:
+        self._switch_view("home")
+
+    def action_view_library(self) -> None:
+        self._switch_view("library")
+
+    def action_view_playlists(self) -> None:
+        self._switch_view("playlists")
+
+    def action_view_search(self) -> None:
+        self._switch_view("search")
+
+    def action_view_queue(self) -> None:
+        self._switch_view("queue")
+
+    def action_view_settings(self) -> None:
+        self._switch_view("settings")
+
+    def action_help(self) -> None:
+        self._switch_view("help")
+
+    def action_back(self) -> None:
+        self._switch_view("home")
+
+    async def _switch_view(self, view: str) -> None:
+        self._state.set_view(view)
+        try:
+            content = self.query_one(ContentArea)
+            await content.switch_view(view)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Sidebar navigation
+    # ------------------------------------------------------------------
+
+    def action_sidebar_down(self) -> None:
+        try:
+            sidebar = self.query_one(Sidebar)
+            sidebar.selected_index += 1
+        except Exception:
+            pass
+
+    def action_sidebar_up(self) -> None:
+        try:
+            sidebar = self.query_one(Sidebar)
+            if sidebar.selected_index > 0:
+                sidebar.selected_index -= 1
+        except Exception:
+            pass
+
+    def action_focus_sidebar(self) -> None:
+        try:
+            sidebar = self.query_one(Sidebar)
+            sidebar.focus()
+        except Exception:
+            pass
+
+    def action_focus_content(self) -> None:
+        try:
+            content = self.query_one(ContentArea)
+            content.focus()
+        except Exception:
+            pass
 
     def action_focus_search(self) -> None:
-        self.query_one("#search-input", Input).focus()
+        try:
+            content = self.query_one(ContentArea)
+            await_result = content.switch_view("search")
+            input_widget = self.query_one("#search-input", Input)
+            input_widget.focus()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Search input handling
@@ -243,17 +301,17 @@ class SpotifyTuiApp(App):
 
         try:
             self._search_service.open_uri(uri)
-            self.query_one(StatusBar).show_message(f"Playing: {uri}")
+            self._show_status(f"Playing: {uri}")
             event.input.value = ""
         except InvalidURIError:
-            self.query_one(StatusBar).show_message(
+            self._show_status(
                 f"Invalid URI: {uri} (expected spotify:type:id or open.spotify.com URL)",
                 is_error=True,
             )
         except SpotifyNotRunningError:
-            self.query_one(StatusBar).show_message("Spotify is not running", is_error=True)
+            self._show_status("Spotify is not running", is_error=True)
         except PlaybackError as e:
-            self.query_one(StatusBar).show_message(str(e), is_error=True)
+            self._show_status(str(e), is_error=True)
 
 
 def main() -> None:

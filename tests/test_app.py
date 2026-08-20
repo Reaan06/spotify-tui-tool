@@ -98,15 +98,13 @@ class TestAppActions(unittest.TestCase):
         self.app.action_volume_down()
         self.app._player.set_volume.assert_called_once_with(0.4)
 
-    @patch.object(SpotifyTuiApp, 'query_one')
-    def test_play_pause_spotify_not_running(self, mock_query):
+    @patch.object(SpotifyTuiApp, '_show_status')
+    def test_play_pause_spotify_not_running(self, mock_status):
         """action_play_pause should show error when Spotify is not running."""
-        mock_status = MagicMock()
-        mock_query.return_value = mock_status
         self.app._player = MagicMock()
         self.app._player.play_pause.side_effect = SpotifyNotRunningError()
         self.app.action_play_pause()
-        mock_status.show_message.assert_called_with("Spotify is not running", is_error=True)
+        mock_status.assert_called_with("Spotify is not running", is_error=True)
 
 
 class TestSearchSubmission(unittest.TestCase):
