@@ -68,7 +68,7 @@ class ContentArea(Widget):
         # Remove current view
         try:
             old = self.query_one("#current-view")
-            old.remove()
+            await old.remove()
         except Exception:
             pass
 

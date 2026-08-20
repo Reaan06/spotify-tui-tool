@@ -1,0 +1,80 @@
+/* Spotify TUI Tool — dark theme stylesheet */
+
+/* Layout root */
+LayoutManager {
+    height: 100%;
+    width: 100%;
+}
+
+#main-container {
+    height: 100%;
+    width: 100%;
+}
+
+/* Sidebar — 20% width */
+#sidebar {
+    width: 20%;
+    background: $surface;
+    border-right: solid $primary;
+}
+
+/* Content area — fills remaining space */
+#content-area {
+    width: 80%;
+}
+
+#content {
+    height: 1fr;
+}
+
+/* Playbar — 6 rows at bottom */
+#playbar {
+    height: 6;
+    background: $surface;
+    border-top: solid $primary;
+}
+
+/* Sidebar items */
+SidebarSection {
+    padding: 1 1 0 1;
+    height: 1;
+    text-style: bold;
+    color: $primary;
+}
+
+SidebarItem {
+    padding: 0 1;
+    height: 1;
+}
+
+SidebarItem:hover {
+    background: $primary;
+}
+
+SidebarItem.selected {
+    background: $primary;
+    text-style: bold;
+}
+
+/* Content views */
+ContentView {
+    height: 100%;
+    width: 100%;
+    padding: 1 2;
+}
+
+/* Playbar areas */
+#track-info {
+    width: 40%;
+    height: 100%;
+}
+
+#progress-area {
+    width: 35%;
+    height: 100%;
+}
+
+#controls-area {
+    width: 25%;
+    height: 100%;
+}
