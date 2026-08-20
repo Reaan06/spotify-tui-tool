@@ -259,11 +259,11 @@ class SpotifyTuiApp(App):
     def action_view_settings(self) -> None:
         self._switch_view("settings")
 
-    def action_help(self) -> None:
-        self._switch_view("help")
+    async def action_help(self) -> None:
+        await self._switch_view("help")
 
-    def action_back(self) -> None:
-        self._switch_view("home")
+    async def action_back(self) -> None:
+        await self._switch_view("home")
 
     async def _switch_view(self, view: str) -> None:
         self._state.set_view(view)
@@ -280,15 +280,14 @@ class SpotifyTuiApp(App):
     def action_sidebar_down(self) -> None:
         try:
             sidebar = self.query_one(Sidebar)
-            sidebar.selected_index += 1
+            sidebar.move_selection(1)
         except Exception:
             pass
 
     def action_sidebar_up(self) -> None:
         try:
             sidebar = self.query_one(Sidebar)
-            if sidebar.selected_index > 0:
-                sidebar.selected_index -= 1
+            sidebar.move_selection(-1)
         except Exception:
             pass
 
@@ -306,10 +305,9 @@ class SpotifyTuiApp(App):
         except Exception:
             pass
 
-    def action_focus_search(self) -> None:
+    async def action_focus_search(self) -> None:
         try:
-            content = self.query_one(ContentArea)
-            await_result = content.switch_view("search")
+            await self._switch_view("search")
             input_widget = self.query_one("#search-input", Input)
             input_widget.focus()
         except Exception:

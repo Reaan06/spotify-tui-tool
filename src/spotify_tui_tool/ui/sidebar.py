@@ -1,6 +1,6 @@
 """Sidebar component — source selector, library, playlists.
 
-Phase 1 of spotatui integration.  Displays navigation sections.
+Supports j/k navigation with visual highlighting.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class SidebarItem(Static):
         background: $primary;
     }
 
-    SidebarItem.selected {
+    SidebarItem.highlighted {
         background: $primary;
         text-style: bold;
     }
@@ -35,6 +35,7 @@ class SidebarItem(Static):
     def __init__(self, label: str, **kwargs) -> None:
         super().__init__(label, **kwargs)
         self.label_text = label
+        self.is_highlighted = False
 
     class Selected(Message):
         """Emitted when an item is selected."""
@@ -110,6 +111,26 @@ class Sidebar(Widget):
         with Vertical(id="playlists-section"):
             yield SidebarSection("Playlists")
             yield SidebarItem("  (No playlists)", id="playlists-empty")
+
+    def get_all_items(self) -> list[SidebarItem]:
+        """Get all sidebar items in order."""
+        return list(self.query(SidebarItem))
+
+    def move_selection(self, delta: int) -> None:
+        """Move selection by delta (-1 up, +1 down)."""
+        items = self.get_all_items()
+        if not items:
+            return
+
+        # Remove current highlight
+        if 0 <= self.selected_index < len(items):
+            items[self.selected_index].remove_class("highlighted")
+
+        # Update index
+        self.selected_index = max(0, min(self.selected_index + delta, len(items) - 1))
+
+        # Apply new highlight
+        items[self.selected_index].add_class("highlighted")
 
     def on_sidebar_item_selected(self, event: SidebarItem.Selected) -> None:
         """Handle item selection."""

@@ -41,23 +41,21 @@ class TestContentArea(unittest.TestCase):
         expected = {"home", "library", "playlists", "search", "queue", "settings", "help"}
         self.assertEqual(set(ContentArea.VIEW_WIDGETS.keys()), expected)
 
-    @unittest.skip(
-        "Source bug: switch_view() calls old.remove() synchronously but remove() "
-        "is async, causing DuplicateIds when mounting the replacement view"
-    )
     def test_switch_view(self):
         async def _test():
             app = _ContentTestApp()
             async with app.run_test():
                 widget = app.query_one(ContentArea)
-                widget.switch_view("search")
+                await widget.switch_view("search")
                 self.assertEqual(widget.current_view, "search")
         asyncio.run(_test())
 
     def test_switch_view_same_noop(self):
-        widget = ContentArea()
-        widget.switch_view("home")
-        self.assertEqual(widget.current_view, "home")
+        async def _test():
+            widget = ContentArea()
+            await widget.switch_view("home")
+            self.assertEqual(widget.current_view, "home")
+        asyncio.run(_test())
 
 
 if __name__ == "__main__":

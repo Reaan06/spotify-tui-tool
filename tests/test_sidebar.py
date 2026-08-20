@@ -50,10 +50,6 @@ class TestSidebar(unittest.TestCase):
         self.assertIsNotNone(widget)
         self.assertIsInstance(widget, Sidebar)
 
-    @unittest.skip(
-        "Source bug: SidebarItem.__init__ takes item_id but compose() passes "
-        "id=item_id as keyword, causing Static.__init__ duplicate id error"
-    )
     def test_compose_returns_widgets(self):
         async def _test():
             app = _SidebarTestApp()
@@ -87,6 +83,50 @@ class TestSidebar(unittest.TestCase):
     def test_current_section_default(self):
         widget = Sidebar()
         self.assertEqual(widget.current_section, "library")
+
+    def test_get_all_items(self):
+        async def _test():
+            app = _SidebarTestApp()
+            async with app.run_test():
+                sidebar = app.query_one(Sidebar)
+                items = sidebar.get_all_items()
+                self.assertEqual(len(items), 7)
+                self.assertIsInstance(items[0], SidebarItem)
+        asyncio.run(_test())
+
+    def test_move_selection_down(self):
+        async def _test():
+            app = _SidebarTestApp()
+            async with app.run_test():
+                sidebar = app.query_one(Sidebar)
+                self.assertEqual(sidebar.selected_index, 0)
+                sidebar.move_selection(1)
+                self.assertEqual(sidebar.selected_index, 1)
+                sidebar.move_selection(1)
+                self.assertEqual(sidebar.selected_index, 2)
+        asyncio.run(_test())
+
+    def test_move_selection_up(self):
+        async def _test():
+            app = _SidebarTestApp()
+            async with app.run_test():
+                sidebar = app.query_one(Sidebar)
+                sidebar.move_selection(2)
+                self.assertEqual(sidebar.selected_index, 2)
+                sidebar.move_selection(-1)
+                self.assertEqual(sidebar.selected_index, 1)
+        asyncio.run(_test())
+
+    def test_move_selection_bounds(self):
+        async def _test():
+            app = _SidebarTestApp()
+            async with app.run_test():
+                sidebar = app.query_one(Sidebar)
+                sidebar.move_selection(-5)
+                self.assertEqual(sidebar.selected_index, 0)
+                sidebar.move_selection(100)
+                self.assertEqual(sidebar.selected_index, len(sidebar.get_all_items()) - 1)
+        asyncio.run(_test())
 
 
 if __name__ == "__main__":
