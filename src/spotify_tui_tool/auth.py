@@ -12,6 +12,7 @@ Flow:
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -84,7 +85,8 @@ class AuthResult:
 
     @property
     def message(self) -> str:
-        return auth_message(self.state, (self.user or {}).get("display_name", ""))
+        user = self.user or {}
+        return auth_message(self.state, user.get("display_name") or user.get("id", ""))
 
 
 def _generate_pkce_pair() -> tuple[str, str]:
@@ -95,7 +97,7 @@ def _generate_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _build_auth_url(code_challenge: str) -> str:
+def _build_auth_url(code_challenge: str, state: str | None = None) -> str:
     params = {
         "client_id": CLIENT_ID,
         "response_type": "code",
@@ -105,6 +107,8 @@ def _build_auth_url(code_challenge: str) -> str:
         "code_challenge": code_challenge,
         "show_dialog": "true",
     }
+    if state:
+        params["state"] = state
     return f"{AUTH_URL}?{urlencode(params)}"
 
 
@@ -137,8 +141,12 @@ def refresh_access_token(refresh_token: str) -> dict:
 
 
 def save_tokens(token_data: dict) -> None:
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_FILE.write_text(json.dumps(token_data, indent=2))
+    token_dir = TOKEN_FILE.parent
+    token_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(token_dir, 0o700)
+    with TOKEN_FILE.open("w") as token_file:
+        json.dump(token_data, token_file, indent=2)
+    os.chmod(TOKEN_FILE, 0o600)
 
 
 def load_tokens() -> Optional[dict]:
@@ -162,7 +170,10 @@ def get_valid_token() -> Optional[str]:
     if tokens is None:
         return None
     if is_token_expired(tokens):
-        tokens = refresh_access_token(tokens["refresh_token"])
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            return None
+        tokens = refresh_access_token(refresh_token)
         save_tokens(tokens)
     return tokens.get("access_token")
 
@@ -283,6 +294,14 @@ class _CallbackHandler(BaseHTTPRequestHandler):
     """Minimal handler that captures the ?code= query param."""
 
     auth_code: Optional[str] = None
+    callback_error: Optional[str] = None
+    expected_state: Optional[str] = None
+
+    @classmethod
+    def reset(cls, expected_state: str) -> None:
+        cls.auth_code = None
+        cls.callback_error = None
+        cls.expected_state = expected_state
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -291,6 +310,12 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         qs = parse_qs(parsed.query)
+        state = qs.get("state", [None])[0]
+        if state != _CallbackHandler.expected_state:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"<h1>Authentication failed: invalid state.</h1>")
+            return
         code = qs.get("code", [None])[0]
         if code:
             _CallbackHandler.auth_code = code
@@ -300,10 +325,12 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"<h1>Authentication successful! You can close this tab.</h1>")
         else:
             error = qs.get("error", ["unknown"])[0]
+            _CallbackHandler.callback_error = error
             self.send_response(400)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            self.wfile.write(f"<h1>Authentication failed: {error}</h1>".encode())
+            safe_error = html.escape(error)
+            self.wfile.write(f"<h1>Authentication failed: {safe_error}</h1>".encode())
         # Shut down after receiving callback
         import threading
         threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -322,16 +349,35 @@ def authenticate() -> dict:
         RuntimeError: if the auth code cannot be obtained or exchanged
     """
     code_verifier, code_challenge = _generate_pkce_pair()
-    auth_url = _build_auth_url(code_challenge)
+    oauth_state = secrets.token_urlsafe(32)
+    auth_url = _build_auth_url(code_challenge, oauth_state)
 
-    server = HTTPServer(("127.0.0.1", 8888), _CallbackHandler)
-    server.timeout = 120
+    _CallbackHandler.reset(oauth_state)
+    try:
+        server = HTTPServer(("127.0.0.1", 8888), _CallbackHandler)
+    except OSError as exc:
+        raise RuntimeError(
+            "Unable to start Spotify OAuth callback server on 127.0.0.1:8888"
+        ) from exc
+    server.timeout = 1
 
     import webbrowser
-    webbrowser.open(auth_url)
+    try:
+        webbrowser.open(auth_url)
+        deadline = time.monotonic() + 120
+        while (
+            _CallbackHandler.auth_code is None
+            and _CallbackHandler.callback_error is None
+            and time.monotonic() < deadline
+        ):
+            server.handle_request()
+    finally:
+        server.server_close()
 
-    server.handle_request()
-
+    if _CallbackHandler.callback_error:
+        raise RuntimeError(
+            f"Spotify authorization failed: {_CallbackHandler.callback_error}"
+        )
     code = _CallbackHandler.auth_code
     if code is None:
         raise RuntimeError("Failed to obtain authorization code from callback")

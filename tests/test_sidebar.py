@@ -57,9 +57,11 @@ class TestSidebar(unittest.TestCase):
                 sources = app.query_one("#sources-section")
                 library = app.query_one("#library-section")
                 playlists = app.query_one("#playlists-section")
+                login_status = app.query_one("#login-status")
                 self.assertIsNotNone(sources)
                 self.assertIsNotNone(library)
                 self.assertIsNotNone(playlists)
+                self.assertIsNotNone(login_status)
         asyncio.run(_test())
 
     def test_sources_defined(self):

@@ -6,7 +6,7 @@ import unittest
 from textual.app import App, ComposeResult
 
 from spotify_tui_tool.ui.playbar import Playbar
-from spotify_tui_tool.models import TrackInfo, PlaybackStatus
+from spotify_tui_tool.models import PlaybackState, TrackInfo, PlaybackStatus
 
 
 class _PlaybarTestApp(App):
@@ -69,6 +69,39 @@ class TestPlaybar(unittest.TestCase):
                 widget.update_track(None, playing=False)
                 self.assertIsNone(widget.current_track)
                 self.assertFalse(widget.is_playing)
+        asyncio.run(_test())
+
+    def test_dynamic_markup_is_rendered_as_literal_text(self):
+        async def _test():
+            app = _PlaybarTestApp()
+            async with app.run_test():
+                widget = app.query_one(Playbar)
+                widget.update_track(
+                    TrackInfo(
+                        artist="[red]artist[/red]",
+                        title="[bold]title[/bold]",
+                    ),
+                    playing=True,
+                )
+                widget.set_status("[green]status[/green]")
+                track_info = str(app.query_one("#track-info").render())
+                controls = str(app.query_one("#controls-area").render())
+                self.assertIn("[red]artist[/red]", track_info)
+                self.assertIn("[bold]title[/bold]", track_info)
+                self.assertIn("[green]status[/green]", controls)
+
+                widget.update_track(
+                    TrackInfo(
+                        playback_state=PlaybackState.UNAVAILABLE,
+                        playback_message="[yellow]message[/yellow]",
+                    ),
+                    playing=False,
+                )
+                self.assertIn(
+                    "[yellow]message[/yellow]",
+                    str(app.query_one("#track-info").render()),
+                )
+
         asyncio.run(_test())
 
 

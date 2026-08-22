@@ -245,6 +245,15 @@ class TestErrorPropagation(unittest.TestCase):
         with self.assertRaises(PlaybackError):
             client.seek(5000)
 
+    def test_seek_converts_milliseconds_to_signed_seconds(self):
+        mock = make_mock_player()
+        client = SpotifyClient(player=mock)
+        client.seek(5000)
+        mock.run.assert_called_once_with("position", "+5")
+        mock.reset_mock()
+        client.seek(-2500)
+        mock.run.assert_called_once_with("position", "-2.5")
+
 
 if __name__ == "__main__":
     unittest.main()

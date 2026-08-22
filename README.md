@@ -8,10 +8,10 @@ A Textual-based TUI for controlling SpotX-patched Spotify desktop via playerctl/
 - **Volume control**: up/down with vim-style keybindings
 - **Seek**: forward/backward 5 seconds
 - **Now Playing**: real-time track metadata display (artist, title, album, progress)
-- **Search**: paste Spotify URIs or URLs to play tracks, playlists, albums
+- **Search**: browse Spotify track, album, and artist results
 - **History**: last 10 opened URIs, most-recent-first
 - **3-panel layout**: sidebar, content area, playbar
-- **View switching**: Home, Library, Playlists, Search, Queue, Settings, Help
+- **View switching**: Home, Library, Playlists, Search, Settings, Help, Login
 
 ## Requirements
 
@@ -53,24 +53,35 @@ python -m spotify_tui_tool.app
 | `p` | Previous track |
 | `+` / `-` | Volume up/down |
 | `<` / `>` | Seek backward/forward |
-| `F` | Like/Unlike (stub) |
 | `/` | Search view |
-| `1`-`6` | Switch views (1=Home, 2=Library, 3=Playlists, 4=Search, 5=Queue, 6=Settings) |
+| `1`-`4` | Switch views (1=Home, 2=Library, 3=Playlists, 4=Search) |
+| `6` / `7` | Settings / Login |
 | `j` / `k` | Sidebar navigation |
 | `h` / `l` | Sidebar/Content navigation |
 | `?` | Help view |
-| `Esc` | Back to Home |
-| `q` | Quit |
+| `Esc` | Close the active transient view |
+| `q` | Close an empty transient search, close another transient view, or quit |
 
 ### Views
 
 - **Home**: Currently playing track
-- **Library**: Liked songs (stub — not available via playerctl)
-- **Playlists**: Playlist list (stub — use spotatui for browsing)
-- **Search**: Search with URI input
-- **Queue**: Current play queue
+- **Library**: Read-only liked songs from the Spotify Web API
+- **Playlists**: Read-only user playlists from the Spotify Web API
+- **Search**: Spotify track, album, and artist results
 - **Settings**: Configuration and keybinding reference
 - **Help**: Full keybinding table
+
+### Spotify API Authentication
+
+Use the Login view (`7`) or the sidebar login action to start Spotify OAuth.
+The application uses PKCE with a loopback callback at
+`http://127.0.0.1:8888/callback` and requests read-only scopes for the current
+profile, liked songs, and playlists. Successful tokens are stored in
+`~/.config/spotify-tui-tool/tokens.json` with private file permissions, then
+validated through the read-only `/me` endpoint before browsing is enabled.
+
+Playback remains playerctl/MPRIS-based; the Spotify Web API is not used for
+streaming or playback control.
 
 ## Development
 
@@ -120,9 +131,9 @@ spotify-tui-tool/
 │           ├── home.py          # Home view (current track)
 │           ├── library.py       # Library view (liked songs)
 │           ├── playlists.py     # Playlists view
-│           ├── queue.py         # Queue view
 │           ├── search.py        # Search view
-│           └── settings.py      # Settings view
+│           ├── settings.py      # Settings view
+│           └── login.py         # Login view
 ├── tests/
 │   ├── test_app.py              # App instantiation and action tests
 │   ├── test_config.py           # Config manager tests

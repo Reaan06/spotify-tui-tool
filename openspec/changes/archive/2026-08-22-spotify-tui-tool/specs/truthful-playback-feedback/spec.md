@@ -37,17 +37,16 @@ and command failure MUST produce distinct honest, recoverable feedback.
 
 The application MUST poll current-track metadata and playback status at the
 existing approximately one-second cadence without blocking the Textual event
-loop. A successful poll MUST update the playbar. After a poll failure, the last
-known track MAY remain visible but MUST be marked stale; no known track MUST be
-represented as stopped/empty or player-unavailable according to the observed
-transport result. The exact stale timeout is an unresolved product decision and
-MUST be documented before acceptance.
+loop. A successful poll MUST update the playbar. After one missed poll, the last
+known track MAY remain visible as fresh; after two consecutive missed polls it
+MUST be marked stale. No known track MUST be represented as stopped/empty or
+player-unavailable according to the observed transport result.
 
 #### Scenario: Poll success and failure
 
-- GIVEN mocked metadata/status responses followed by a transport failure
+- GIVEN mocked metadata/status responses followed by two transport failures
 - WHEN successive polls run
-- THEN the first result is shown as current and the retained result is shown as stale after failure
+- THEN the first missed poll retains the current result and the second consecutive miss marks it stale
 
 #### Scenario: No player versus stopped player
 
@@ -86,6 +85,6 @@ state, and feedback parity—not exact pixels or unsupported feature parity.
 
 ## Open product decisions
 
-The exact player name selection, stale threshold, unavailable-message wording,
-and any future capability discovery policy remain unresolved. They MUST be
-decided explicitly in design/apply rather than inferred from a live environment.
+The exact player name selection, unavailable-message wording, and any future
+capability discovery policy remain unresolved. The stale threshold is two
+consecutive missed polls and MUST remain aligned with the implementation.

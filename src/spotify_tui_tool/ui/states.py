@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.markup import escape
 from textual.widgets import DataTable, Static
 
 from spotify_tui_tool.state import BrowseStatus, BrowseSurfaceState
@@ -29,10 +30,10 @@ def browse_state_text(
     if resolved is BrowseStatus.EMPTY:
         return f"No {label} found. Press r to retry."
     if resolved is BrowseStatus.ERROR:
-        detail = f" {message}" if message else ""
+        detail = f" {escape(message)}" if message else ""
         return f"Browse error:{detail} Press r to retry."
     if resolved is BrowseStatus.STALE:
-        detail = f" {message}" if message else " Refresh failed."
+        detail = f" {escape(message)}" if message else " Refresh failed."
         return f"Showing stale {label}.{detail} Press r to retry."
     return ""
 
@@ -78,7 +79,10 @@ class BrowseSurfaceMixin:
         self.surface_message = ""
 
     def _row_cells(self, row) -> tuple[str, ...]:
-        return row.title, row.subtitle, row.detail, row.auxiliary
+        return tuple(
+            escape(str(cell))
+            for cell in (row.title, row.subtitle, row.detail, row.auxiliary)
+        )
 
     def _render_rows(self) -> None:
         try:

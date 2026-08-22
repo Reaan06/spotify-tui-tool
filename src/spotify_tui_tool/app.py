@@ -149,9 +149,6 @@ class SpotifyTuiApp(App):
 
     def _api_for_token(self, access_token: str) -> SpotifyWebAPI:
         """Build an API client for auth validation without touching the UI thread."""
-        if self._web_api is not None:
-            self._web_api._session.headers["Authorization"] = f"Bearer {access_token}"
-            return self._web_api
         return SpotifyWebAPI(access_token=access_token)
 
     def compose(self) -> ComposeResult:
@@ -201,9 +198,9 @@ class SpotifyTuiApp(App):
         if generation != self._auth_generation:
             return
         self._is_logged_in = result.state is AuthState.AUTHENTICATED
-        self._username = (result.user or {}).get(
-            "display_name", (result.user or {}).get("id", "")
-        )
+        self._username = (result.user or {}).get("display_name") or (result.user or {}).get(
+            "id", ""
+        ) or ""
         self._state.set_auth_state(
             result.state.value,
             user=result.user,
@@ -244,7 +241,10 @@ class SpotifyTuiApp(App):
         """Schedule the active read-only browse surface for loading."""
         if not self._is_logged_in:
             return
-        current_view = self.query_one(ContentArea).current_view
+        try:
+            current_view = self.query_one(ContentArea).current_view
+        except Exception:
+            return
         if current_view in {"library", "playlists", "search"}:
             self._begin_browse_load(current_view)
 
@@ -350,7 +350,7 @@ class SpotifyTuiApp(App):
         """Update the playbar or log a status message."""
         try:
             playbar = self.query_one(Playbar)
-            playbar.set_status(f"[red]{text}[/red]" if is_error else text)
+            playbar.set_status(text, is_error=is_error)
         except Exception:
             pass
 
@@ -374,6 +374,8 @@ class SpotifyTuiApp(App):
                 playbar.set_status(info.playback_message or "Playback unavailable.")
             elif info.playback_state is PlaybackState.STOPPED:
                 playbar.set_status("Playback stopped.")
+            elif info.playback_state is PlaybackState.FRESH:
+                playbar.set_status("")
         except Exception:
             pass
 
@@ -505,6 +507,15 @@ class SpotifyTuiApp(App):
             self._begin_browse_load(view)
 
     async def action_quit_or_back(self) -> None:
+        if self._state.transient_view == "search":
+            try:
+                content = self.query_one(ContentArea)
+                search_input = self.query_one("#search-input", Input)
+            except Exception:
+                pass
+            else:
+                if content.current_view == "search" and search_input.value:
+                    return
         if self._state.view_history:
             await self.action_back()
             return
@@ -618,13 +629,6 @@ class SpotifyTuiApp(App):
         self._set_focus_region("sidebar")
         if event.view:
             self.run_worker(self._switch_view(event.view, focus_region="sidebar"))
-
-    @on(Input.Changed, "#search-input")
-    def on_search_input_changed(self, event: Input.Changed) -> None:
-        """Keep q available for closing the transient search surface."""
-        if event.value == "q" and self._state.transient_view == "search":
-            event.input.value = ""
-            self.run_worker(self.action_back())
 
     # ------------------------------------------------------------------
     # Search input handling

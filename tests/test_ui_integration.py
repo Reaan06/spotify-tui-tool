@@ -8,6 +8,7 @@ Test runner: python -m unittest discover -s tests -v
 
 import asyncio
 import unittest
+from unittest.mock import MagicMock
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -100,9 +101,7 @@ class TestKeybindings(unittest.TestCase):
     def test_space_action(self):
         async def _test():
             app = SpotifyTuiApp()
-            app._player = type("_M", (), {
-                "play_pause": lambda s: None,
-            })()
+            app._client = MagicMock()
             async with app.run_test() as pilot:
                 await pilot.press("space")
 
@@ -111,9 +110,7 @@ class TestKeybindings(unittest.TestCase):
     def test_n_action(self):
         async def _test():
             app = SpotifyTuiApp()
-            app._player = type("_M", (), {
-                "next": lambda s: None,
-            })()
+            app._client = MagicMock()
             async with app.run_test() as pilot:
                 await pilot.press("n")
 
@@ -122,9 +119,7 @@ class TestKeybindings(unittest.TestCase):
     def test_p_action(self):
         async def _test():
             app = SpotifyTuiApp()
-            app._player = type("_M", (), {
-                "previous": lambda s: None,
-            })()
+            app._client = MagicMock()
             async with app.run_test() as pilot:
                 await pilot.press("p")
 

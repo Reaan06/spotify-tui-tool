@@ -10,11 +10,11 @@ Strict TDD: tests written FIRST (RED).  We test that:
 Test runner: python3 -m unittest
 """
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from spotify_tui_tool.app import SpotifyTuiApp, main
 from spotify_tui_tool.exceptions import InvalidURIError, PlaybackError, SpotifyNotRunningError
-from spotify_tui_tool.models import BrowseRow
+from spotify_tui_tool.models import BrowseRow, PlaybackState, PlaybackStatus, TrackInfo
 from spotify_tui_tool.ui.rows import BrowseRowActivated
 
 
@@ -152,6 +152,56 @@ class TestSearchSubmission(unittest.TestCase):
         self.app._search_service.open_uri.side_effect = InvalidURIError("not-a-uri")
         # Should not raise
         self.app.on_search_submitted(event)
+
+
+class TestAppBoundaries(unittest.TestCase):
+    def test_status_text_is_escaped_before_markup_rendering(self):
+        app = SpotifyTuiApp()
+        playbar = MagicMock()
+        with patch.object(app, "query_one", return_value=playbar):
+            app._show_status("[bold]untrusted[/bold]", is_error=True)
+        playbar.set_status.assert_called_once_with(
+            "[bold]untrusted[/bold]", is_error=True
+        )
+
+    def test_unmounted_content_lookup_is_safe(self):
+        app = SpotifyTuiApp()
+        app._is_logged_in = True
+        app._load_web_api_data()
+
+    def test_fresh_playback_clears_previous_playbar_status(self):
+        async def _test():
+            app = SpotifyTuiApp()
+            async with app.run_test():
+                playbar = app.query_one("#playbar")
+                playbar.set_status("Playback unavailable")
+                app._poll_metadata(TrackInfo(
+                    artist="Artist",
+                    title="Title",
+                    status=PlaybackStatus.PLAYING,
+                    playback_state=PlaybackState.FRESH,
+                ))
+                self.assertEqual(playbar.status_message, "")
+
+        import asyncio
+        asyncio.run(_test())
+
+    def test_transient_search_only_closes_when_input_is_empty(self):
+        app = SpotifyTuiApp()
+        app._state.push_transient("search", "home")
+        content = MagicMock(current_view="search")
+        search_input = MagicMock(value="q")
+        with patch.object(app, "query_one", side_effect=[content, search_input]), \
+             patch.object(app, "exit") as exit_app:
+            import asyncio
+            asyncio.run(app.action_quit_or_back())
+        self.assertEqual(app._state.transient_view, "search")
+        exit_app.assert_not_called()
+        search_input.value = ""
+        app.action_back = AsyncMock()
+        with patch.object(app, "query_one", side_effect=[content, search_input]):
+            asyncio.run(app.action_quit_or_back())
+        app.action_back.assert_awaited_once_with()
 
 
 if __name__ == "__main__":

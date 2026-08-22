@@ -8,9 +8,30 @@ from spotify_tui_tool.ui.rows import (
     rows_from_playlists,
     rows_from_search,
 )
+from spotify_tui_tool.ui.views.search import SearchView
 
 
 class TestBrowseRows(unittest.TestCase):
+    def test_browse_cells_escape_markup(self):
+        view = SearchView()
+        row = BrowseRow(
+            "track",
+            "t1",
+            title="[red]title[/red]",
+            subtitle="[bold]artist[/bold]",
+            detail="[link=https://invalid]album[/link]",
+            auxiliary="[green]duration[/green]",
+        )
+        self.assertEqual(
+            view._row_cells(row),
+            (
+                r"\[red]title\[/red]",
+                r"\[bold]artist\[/bold]",
+                r"\[link=https://invalid]album\[/link]",
+                r"\[green]duration\[/green]",
+            ),
+        )
+
     def test_duplicate_labels_keep_distinct_identity_and_uri(self):
         payload = {
             "tracks": {
@@ -107,6 +128,32 @@ class TestBrowseRows(unittest.TestCase):
 
         self.assertEqual(row.key, "track:stable-id")
         self.assertNotEqual(row.key, row.title)
+
+    def test_explicit_null_nested_api_fields_are_safe(self):
+        rows = rows_from_search({
+            "tracks": {"items": [{
+                "id": "t1", "name": "Track", "album": None,
+                "artists": None,
+            }]},
+            "albums": None,
+            "artists": {"items": [{"id": "a1", "name": "Artist", "genres": None}]},
+        })
+        playlist = rows_from_playlists([{"id": "p1", "name": "Playlist", "tracks": None}])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(playlist[0].detail, "0")
+
+    def test_malformed_collection_entries_are_skipped(self):
+        self.assertEqual(rows_from_library([None]), [])
+        self.assertEqual(rows_from_search({"tracks": {"items": None}}), [])
+
+    def test_duplicate_identity_fallback_always_terminates(self):
+        rows = rows_from_search({
+            "tracks": {"items": [
+                {"id": "index-1", "name": "First"},
+                {"id": "index-1", "name": "Second"},
+            ]}
+        })
+        self.assertEqual([row.id for row in rows], ["index-1", "index-1-2"])
 
 
 if __name__ == "__main__":

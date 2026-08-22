@@ -80,6 +80,11 @@ class TestShellPilot(unittest.TestCase):
                 self.assertEqual(content.current_view, "home")
                 self.assertFalse(app.return_value)
 
+                await pilot.press("slash")
+                await pilot.press("a")
+                await pilot.press("q")
+                self.assertEqual(app.query_one("#search-input").value, "aq")
+
         asyncio.run(scenario())
 
     def test_mouse_sidebar_activation_and_content_scroll_are_local(self):

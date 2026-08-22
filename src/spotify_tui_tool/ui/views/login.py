@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.message import Message
@@ -60,7 +61,6 @@ class LoginView(Widget):
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._login_callbacks = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="login-container"):
@@ -74,14 +74,6 @@ class LoginView(Widget):
 
     def on_mount(self) -> None:
         self._render_auth_state()
-        # Textual's Button.press queues a message in newer releases.  Keep the
-        # small legacy test hook deterministic while normal mouse/keyboard
-        # events continue through ``on_button_pressed``.
-        try:
-            button = self.query_one("#login-button", Button)
-            button.press = lambda: self.request_login()
-        except Exception:
-            return
 
     def set_auth_state(
         self,
@@ -109,7 +101,7 @@ class LoginView(Widget):
             text = auth_message(self.auth_state, self.username)
             if reason and self.auth_state is not AuthState.AUTHENTICATED:
                 text = f"{text}\nReason: {reason}"
-            status.update(text)
+            status.update(escape(text))
             button = self.query_one("#login-button", Button)
             button.disabled = self.auth_state in {
                 AuthState.RESTORING,
@@ -121,14 +113,7 @@ class LoginView(Widget):
 
     def request_login(self) -> None:
         message = self.LoginRequested()
-        for callback in self._login_callbacks:
-            callback(message)
         self.post_message(message)
-
-    def on(self, event_name: str, callback) -> None:
-        """Small compatibility hook for the legacy view tests."""
-        if event_name in {"LoginView.LoginRequested", "LoginRequested"}:
-            self._login_callbacks.append(callback)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "login-button":

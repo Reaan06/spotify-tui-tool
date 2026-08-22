@@ -4,13 +4,22 @@ import asyncio
 import unittest
 
 from textual.app import App, ComposeResult
+from textual import on
 
 from spotify_tui_tool.ui.views.login import LoginView
 
 
 class _LoginTestApp(App):
+    def __init__(self):
+        super().__init__()
+        self.login_requests = []
+
     def compose(self) -> ComposeResult:
         yield LoginView()
+
+    @on(LoginView.LoginRequested)
+    def on_login_requested(self, event: LoginView.LoginRequested) -> None:
+        self.login_requests.append(event)
 
 
 class TestLoginView(unittest.TestCase):
@@ -61,6 +70,17 @@ class TestLoginView(unittest.TestCase):
                 self.assertEqual(view.username, "test_user")
         asyncio.run(_test())
 
+    def test_login_status_username_markup_is_literal(self):
+        async def _test():
+            app = _LoginTestApp()
+            async with app.run_test():
+                view = app.query_one(LoginView)
+                view.update_login_status(True, "[red]untrusted[/red]")
+                rendered = str(app.query_one("#login-status").render())
+                self.assertIn("[red]untrusted[/red]", rendered)
+
+        asyncio.run(_test())
+
     def test_update_login_status_not_logged_in(self):
         async def _test():
             app = _LoginTestApp()
@@ -75,13 +95,11 @@ class TestLoginView(unittest.TestCase):
     def test_login_requested_message(self):
         async def _test():
             app = _LoginTestApp()
-            async with app.run_test():
-                view = app.query_one(LoginView)
+            async with app.run_test() as pilot:
                 button = app.query_one("#login-button")
-                messages = []
-                view.on("LoginView.LoginRequested", lambda msg: messages.append(msg))
                 button.press()
-                self.assertEqual(len(messages), 1)
+                await pilot.pause()
+                self.assertEqual(len(app.login_requests), 1)
         asyncio.run(_test())
 
 

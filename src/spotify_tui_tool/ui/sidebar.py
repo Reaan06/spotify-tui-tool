@@ -5,6 +5,7 @@ Supports j/k navigation with visual highlighting.
 
 from __future__ import annotations
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.events import Click, MouseScrollDown, MouseScrollUp
@@ -198,6 +199,9 @@ class Sidebar(Widget):
                 compact_label="Pls",
             )
 
+        with Vertical(id="login-section"):
+            yield Static("[dim]Not logged in[/dim]", id="login-status")
+
     @staticmethod
     def _compact_label(item_id: str) -> str:
         return {
@@ -262,7 +266,7 @@ class Sidebar(Widget):
         self.username = username
         status = self.query_one("#login-status")
         if logged_in:
-            status.update(f"[green]Logged in as {username}[/green]")
+            status.update(f"[green]Logged in as {escape(username)}[/green]")
         else:
             status.update("[dim]Not logged in[/dim]")
 

@@ -39,7 +39,11 @@ def activation_uri(row: BrowseRow) -> str | None:
 
 
 def _names(items: Iterable[dict[str, Any]]) -> str:
-    return ", ".join(str(item.get("name", "")) for item in items if item.get("name"))
+    return ", ".join(
+        str(item.get("name", ""))
+        for item in (items or [])
+        if isinstance(item, dict) and item.get("name")
+    )
 
 
 def _identifier(payload: dict[str, Any], uri: str = "") -> str:
@@ -61,7 +65,7 @@ def row_from_track(track: dict[str, Any], *, kind: str = "track") -> BrowseRow:
         title=str(track.get("name") or "Unknown"),
         subtitle=_names(track.get("artists", [])),
         playable=kind == "track" and uri.startswith("spotify:track:"),
-        detail=str(track.get("album", {}).get("name") or "Unknown"),
+        detail=str((track.get("album") or {}).get("name") or "Unknown"),
         auxiliary=duration,
     )
 
@@ -81,7 +85,7 @@ def row_from_album(album: dict[str, Any]) -> BrowseRow:
 
 def row_from_artist(artist: dict[str, Any]) -> BrowseRow:
     uri = _uri(artist)
-    genres = ", ".join(str(genre) for genre in artist.get("genres", [])[:2])
+    genres = ", ".join(str(genre) for genre in (artist.get("genres") or [])[:2])
     return BrowseRow(
         kind="artist",
         id=_identifier(artist, uri),
@@ -96,7 +100,7 @@ def row_from_artist(artist: dict[str, Any]) -> BrowseRow:
 def row_from_playlist(playlist: dict[str, Any]) -> BrowseRow:
     uri = _uri(playlist)
     description = str(playlist.get("description") or "")[:50]
-    count = int(playlist.get("tracks", {}).get("total") or 0)
+    count = int((playlist.get("tracks") or {}).get("total") or 0)
     return BrowseRow(
         kind="playlist",
         id=_identifier(playlist, uri),
@@ -111,7 +115,9 @@ def row_from_playlist(playlist: dict[str, Any]) -> BrowseRow:
 def rows_from_library(items: Iterable[dict[str, Any]]) -> list[BrowseRow]:
     """Convert ``/me/tracks`` items without discarding track identity."""
     rows: list[BrowseRow] = []
-    for index, item in enumerate(items):
+    for index, item in enumerate(items or []):
+        if not isinstance(item, dict):
+            continue
         track = item.get("track", item)
         if isinstance(track, dict):
             row = row_from_track(track, kind="track")
@@ -135,29 +141,35 @@ def rows_from_playlists(items: Iterable[dict[str, Any]]) -> list[BrowseRow]:
 
 def rows_from_search(results: dict[str, Any]) -> list[BrowseRow]:
     """Convert the bounded track/album/artist search window in display order."""
+    results = results or {}
     rows: list[BrowseRow] = []
     rows.extend(
         row_from_track(track)
-        for track in results.get("tracks", {}).get("items", [])
+        for track in ((results.get("tracks") or {}).get("items") or [])
         if isinstance(track, dict)
     )
     rows.extend(
         row_from_album(album)
-        for album in results.get("albums", {}).get("items", [])
+        for album in ((results.get("albums") or {}).get("items") or [])
         if isinstance(album, dict)
     )
     rows.extend(
         row_from_artist(artist)
-        for artist in results.get("artists", {}).get("items", [])
+        for artist in ((results.get("artists") or {}).get("items") or [])
         if isinstance(artist, dict)
     )
     unique_rows: list[BrowseRow] = []
     seen: set[str] = set()
     for index, row in enumerate(rows):
         if row.key in seen:
-            row = replace(row, id=row.id or f"index-{index}")
-            while row.key in seen:
-                row = replace(row, id=f"index-{index}-{len(seen)}")
+            suffix = 0
+            while True:
+                suffix += 1
+                identifier = f"index-{index}" if suffix == 1 else f"index-{index}-{suffix}"
+                candidate = replace(row, id=identifier)
+                if candidate.key not in seen:
+                    row = candidate
+                    break
         seen.add(row.key)
         unique_rows.append(row)
     return unique_rows

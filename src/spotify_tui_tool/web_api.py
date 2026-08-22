@@ -6,6 +6,8 @@ and converts JSON responses into plain dicts or dataclass instances.
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -17,6 +19,7 @@ from spotify_tui_tool.auth import (
     refresh_access_token,
     save_tokens,
 )
+from spotify_tui_tool.exceptions import SpotifyRateLimitError
 
 BASE_URL = "https://api.spotify.com/v1"
 READ_ONLY_SCOPES = SCOPES
@@ -26,6 +29,8 @@ BROWSE_WINDOWS = {
     "playlists": (50, 0),
     "search": (20, 0),
 }
+MAX_RATE_LIMIT_RETRIES = 1
+MAX_RATE_LIMIT_DELAY = 5.0
 
 
 class SpotifyWebAPI:
@@ -33,26 +38,52 @@ class SpotifyWebAPI:
 
     def __init__(self, access_token: Optional[str] = None) -> None:
         self._session = requests.Session()
+        self._session_lock = threading.RLock()
+        self._access_token = access_token
         if access_token:
             self._session.headers["Authorization"] = f"Bearer {access_token}"
 
     def _ensure_auth(self) -> None:
-        token = get_valid_token()
-        if token:
-            self._session.headers["Authorization"] = f"Bearer {token}"
+        with self._session_lock:
+            if self._access_token:
+                self._session.headers["Authorization"] = f"Bearer {self._access_token}"
+                return
+            token = get_valid_token()
+            if token:
+                self._access_token = token
+                self._session.headers["Authorization"] = f"Bearer {token}"
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        self._ensure_auth()
-        resp = self._session.get(f"{BASE_URL}{path}", params=params, timeout=10)
-        if resp.status_code == 401:
-            tokens = load_tokens()
-            if tokens:
-                new = refresh_access_token(tokens["refresh_token"])
-                save_tokens(new)
-                self._session.headers["Authorization"] = f"Bearer {new['access_token']}"
+        with self._session_lock:
+            self._ensure_auth()
+            resp = self._session.get(f"{BASE_URL}{path}", params=params, timeout=10)
+            if resp.status_code == 401:
+                tokens = load_tokens()
+                refresh_token = (tokens or {}).get("refresh_token")
+                if refresh_token:
+                    new = refresh_access_token(refresh_token)
+                    save_tokens(new)
+                    self._access_token = new["access_token"]
+                    self._session.headers["Authorization"] = f"Bearer {new['access_token']}"
+                    resp = self._session.get(f"{BASE_URL}{path}", params=params, timeout=10)
+            for retry in range(MAX_RATE_LIMIT_RETRIES + 1):
+                if resp.status_code != 429:
+                    break
+                retry_after = self._retry_after(resp)
+                if retry == MAX_RATE_LIMIT_RETRIES:
+                    raise SpotifyRateLimitError(retry_after)
+                if retry_after:
+                    time.sleep(retry_after)
                 resp = self._session.get(f"{BASE_URL}{path}", params=params, timeout=10)
         resp.raise_for_status()
         return resp.json()
+
+    @staticmethod
+    def _retry_after(response: requests.Response) -> float:
+        try:
+            return min(max(float(response.headers.get("Retry-After", 0)), 0.0), MAX_RATE_LIMIT_DELAY)
+        except (TypeError, ValueError):
+            return 0.0
 
     # ------------------------------------------------------------------
     # User profile

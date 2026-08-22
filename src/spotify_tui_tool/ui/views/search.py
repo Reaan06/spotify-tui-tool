@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.events import Key
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -10,6 +11,24 @@ from textual.widgets import DataTable, Input, Static
 
 from spotify_tui_tool.ui.rows import rows_from_search
 from spotify_tui_tool.ui.states import BrowseStateWidget, BrowseSurfaceMixin
+
+
+class SearchInput(Input):
+    """Keep transient-search ``q`` semantics local to the input widget."""
+
+    async def _on_key(self, event: Key) -> None:
+        app = self.app
+        if (
+            event.key == "q"
+            and not self.value
+            and getattr(getattr(app, "_state", None), "transient_view", None) == "search"
+            and hasattr(app, "action_back")
+        ):
+            event.stop()
+            event.prevent_default()
+            app.run_worker(app.action_back())
+            return
+        await super()._on_key(event)
 
 
 class SearchView(BrowseSurfaceMixin, Widget):
@@ -58,7 +77,7 @@ class SearchView(BrowseSurfaceMixin, Widget):
 
     def compose(self) -> ComposeResult:
         yield Static("[bold]Search[/bold]", id="search-header")
-        yield Input(placeholder="Search tracks, albums, artists...", id="search-input")
+        yield SearchInput(placeholder="Search tracks, albums, artists...", id="search-input")
         yield DataTable(id="search-results")
         yield BrowseStateWidget("search", id="search-state")
         yield Static(
@@ -90,14 +109,6 @@ class SearchView(BrowseSurfaceMixin, Widget):
     def set_authenticated(self, authenticated: bool) -> None:
         self.is_authenticated = authenticated
         self._update_display()
-
-    def get_selected_row(self):
-        table = self.query_one("#search-results", DataTable)
-        if table.cursor_row is None:
-            return None
-        if 0 <= table.cursor_row < len(self._browse_rows):
-            return self._browse_rows[table.cursor_row]
-        return None
 
     def get_selected_uri(self) -> str | None:
         """Return stored URI for compatibility, never a rendered cell value."""

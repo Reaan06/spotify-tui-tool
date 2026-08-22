@@ -53,6 +53,16 @@ class TestPlaylistsViewWebAPI(unittest.TestCase):
                 self.assertFalse(message.display)
         asyncio.run(_test())
 
+    def test_playlist_columns_match_row_order(self):
+        async def _test():
+            app = _PlaylistsTestApp()
+            async with app.run_test():
+                table = app.query_one("#playlists-table")
+                labels = [str(column.label) for column in table.columns.values()]
+                self.assertEqual(labels, ["Name", "Description", "Tracks", ""])
+
+        asyncio.run(_test())
+
     def test_set_unauthenticated_shows_message(self):
         async def _test():
             app = _PlaylistsTestApp()

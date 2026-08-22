@@ -1,6 +1,9 @@
 """Tests for auth module — token storage and refresh logic."""
 
 import json
+import io
+import stat
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -13,8 +16,6 @@ from spotify_tui_tool.auth import (
     is_token_expired,
     load_tokens,
     save_tokens,
-    TOKEN_FILE,
-    TOKEN_DIR,
 )
 
 
@@ -86,13 +87,14 @@ class TestTokenExpiry(unittest.TestCase):
 class TestTokenStorage(unittest.TestCase):
 
     def setUp(self):
-        self._original_file = TOKEN_FILE
-        self._tmp = Path("/tmp/test_spotify_tokens.json")
+        self._original_file = auth.TOKEN_FILE
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self._tmp = Path(self._tmp_dir.name) / "tokens.json"
         auth.TOKEN_FILE = self._tmp
 
     def tearDown(self):
-        if self._tmp.exists():
-            self._tmp.unlink()
+        auth.TOKEN_FILE = self._original_file
+        self._tmp_dir.cleanup()
 
     def test_save_and_load(self):
         data = {"access_token": "abc", "refresh_token": "xyz", "expires_in": 3600, "obtained_at": 1.0}
@@ -102,7 +104,7 @@ class TestTokenStorage(unittest.TestCase):
         self.assertEqual(loaded["refresh_token"], "xyz")
 
     def test_load_returns_none_when_missing(self):
-        auth.TOKEN_FILE = Path("/tmp/nonexistent_tokens_test_file.json")
+        auth.TOKEN_FILE = self._tmp.parent / "nonexistent.json"
         self.assertIsNone(load_tokens())
 
     def test_load_returns_none_on_corrupt(self):
@@ -110,27 +112,31 @@ class TestTokenStorage(unittest.TestCase):
         self.assertIsNone(load_tokens())
 
     def test_save_creates_parent_dir(self):
-        import shutil
-        nested = Path("/tmp/test_nested_dir/sub/tokens.json")
+        nested = self._tmp.parent / "sub" / "tokens.json"
         auth.TOKEN_FILE = nested
         save_tokens({"access_token": "x", "obtained_at": 0, "expires_in": 0})
         self.assertTrue(nested.exists())
-        # cleanup
-        shutil.rmtree("/tmp/test_nested_dir", ignore_errors=True)
+
+    def test_save_restricts_directory_and_file_permissions(self):
+        save_tokens({"access_token": "x"})
+        self.assertEqual(stat.S_IMODE(self._tmp.parent.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(self._tmp.stat().st_mode), 0o600)
 
 
 class TestGetValidToken(unittest.TestCase):
 
     def setUp(self):
-        self._tmp = Path("/tmp/test_spotify_valid_tokens.json")
+        self._original_file = auth.TOKEN_FILE
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        self._tmp = Path(self._tmp_dir.name) / "tokens.json"
         auth.TOKEN_FILE = self._tmp
 
     def tearDown(self):
-        if self._tmp.exists():
-            self._tmp.unlink()
+        auth.TOKEN_FILE = self._original_file
+        self._tmp_dir.cleanup()
 
     def test_returns_none_when_no_tokens(self):
-        auth.TOKEN_FILE = Path("/tmp/nonexistent_valid_test.json")
+        auth.TOKEN_FILE = self._tmp.parent / "nonexistent.json"
         self.assertIsNone(auth.get_valid_token())
 
     def test_returns_token_when_valid(self):
@@ -161,6 +167,16 @@ class TestGetValidToken(unittest.TestCase):
         token = auth.get_valid_token()
         self.assertEqual(token, "new_token")
         mock_refresh.assert_called_once_with("old_ref")
+
+    def test_expired_token_without_refresh_token_returns_none(self):
+        save_tokens({
+            "access_token": "old_token",
+            "expires_in": 3600,
+            "obtained_at": time.time() - 7200,
+        })
+        with patch.object(auth, "refresh_access_token") as mock_refresh:
+            self.assertIsNone(auth.get_valid_token())
+        mock_refresh.assert_not_called()
 
 
 class TestRefreshAccessToken(unittest.TestCase):
@@ -195,6 +211,51 @@ class TestRefreshAccessToken(unittest.TestCase):
 
         result = auth.refresh_access_token("old_refresh")
         self.assertEqual(result["refresh_token"], "brand_new_refresh")
+
+
+class TestOAuthCallback(unittest.TestCase):
+
+    def test_callback_rejects_state_from_another_attempt(self):
+        handler = auth._CallbackHandler.__new__(auth._CallbackHandler)
+        handler.path = "/callback?code=stolen&state=wrong"
+        handler.send_response = MagicMock()
+        handler.end_headers = MagicMock()
+        handler.wfile = io.BytesIO()
+        auth._CallbackHandler.reset("expected")
+
+        handler.do_GET()
+
+        self.assertIsNone(auth._CallbackHandler.auth_code)
+        handler.send_response.assert_called_once_with(400)
+
+    @patch("webbrowser.open")
+    @patch.object(auth, "save_tokens")
+    @patch.object(auth, "_exchange_code", return_value={"access_token": "new"})
+    @patch.object(auth, "HTTPServer")
+    def test_authenticate_resets_and_validates_attempt_state(
+        self, mock_server, mock_exchange, mock_save, mock_open
+    ):
+        server = MagicMock()
+
+        def receive_callback():
+            auth._CallbackHandler.auth_code = "code"
+
+        server.handle_request.side_effect = receive_callback
+        mock_server.return_value = server
+
+        result = auth.authenticate()
+
+        self.assertEqual(result["access_token"], "new")
+        opened_url = mock_open.call_args.args[0]
+        self.assertIn("state=", opened_url)
+        self.assertEqual(auth._CallbackHandler.auth_code, "code")
+        mock_exchange.assert_called_once()
+        server.server_close.assert_called_once_with()
+
+    @patch.object(auth, "HTTPServer", side_effect=OSError("address in use"))
+    def test_authenticate_reports_callback_bind_failure(self, mock_server):
+        with self.assertRaisesRegex(RuntimeError, "Unable to start Spotify OAuth callback server"):
+            auth.authenticate()
 
 
 if __name__ == "__main__":

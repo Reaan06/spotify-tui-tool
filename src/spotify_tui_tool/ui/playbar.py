@@ -6,6 +6,7 @@ volume, and control indicators.
 
 from __future__ import annotations
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.events import Click
@@ -97,7 +98,7 @@ class Playbar(Widget):
         if not track or (not track.artist and not track.title):
             if track and track.playback_state is PlaybackState.UNAVAILABLE:
                 message = track.playback_message or "Playback unavailable."
-                self.query_one("#track-info").update(message)
+                self.query_one("#track-info").update(escape(str(message)))
             elif track and track.playback_state is PlaybackState.STOPPED:
                 self.query_one("#track-info").update("[dim]Playback stopped[/dim]")
             else:
@@ -111,7 +112,7 @@ class Playbar(Widget):
             status_icon = "▶" if self.is_playing else "⏸"
             prefix = ""
         self.query_one("#track-info").update(
-            f"{prefix}{status_icon} {track.artist} — {track.title}"
+            f"{prefix}{status_icon} {escape(str(track.artist))} — {escape(str(track.title))}"
         )
 
     def _update_progress(self) -> None:
@@ -150,8 +151,9 @@ class Playbar(Widget):
         self.current_track = track
         self.is_playing = playing
 
-    def set_status(self, message: str) -> None:
-        self.status_message = message
+    def set_status(self, message: str, *, is_error: bool = False) -> None:
+        safe_message = escape(str(message))
+        self.status_message = f"[red]{safe_message}[/red]" if is_error else safe_message
 
     def on_click(self, event: Click) -> None:
         self.focus()

@@ -55,7 +55,7 @@ class PlaylistsView(BrowseSurfaceMixin, Widget):
 
     def on_mount(self) -> None:
         table = self.query_one("#playlists-table", DataTable)
-        table.add_columns("Name", "Tracks", "Description", "")
+        table.add_columns("Name", "Description", "Tracks", "")
         self._render_rows()
         self._render_surface_state()
         self._update_display()

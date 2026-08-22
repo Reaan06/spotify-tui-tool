@@ -101,7 +101,7 @@ class TestPlayerctlPlaybackAuthority(unittest.TestCase):
         player.previous.assert_called_once_with()
         player.get_volume.assert_called_once_with()
         player.set_volume.assert_called_once_with(0.4)
-        player.run.assert_called_once_with("position", "123")
+        player.run.assert_called_once_with("position", "+0.123")
         self.assertEqual(volume, 0.25)
         self.assertEqual(api.mock_calls, [])
 

@@ -4,13 +4,21 @@ import unittest
 from unittest.mock import Mock
 
 from spotify_tui_tool.app import BrowseRequest, SpotifyTuiApp
-from spotify_tui_tool.auth import AuthManager, AuthState, auth_message
+from spotify_tui_tool.auth import AuthManager, AuthResult, AuthState, auth_message
 from spotify_tui_tool.models import BrowseRow
 from spotify_tui_tool.state import AppState, BrowseStatus
 from spotify_tui_tool.ui.views.search import SearchView
+from spotify_tui_tool.ui.states import browse_state_text
 
 
 class TestAuthenticationLifecycle(unittest.TestCase):
+    def test_username_falls_back_to_id_when_display_name_is_empty(self):
+        result = AuthResult(
+            AuthState.AUTHENTICATED,
+            user={"id": "ada", "display_name": None},
+        )
+        self.assertEqual(result.message, "Signed in as ada.")
+
     def test_auth_copy_is_explicit_for_each_lifecycle_state(self):
         self.assertEqual(
             auth_message(AuthState.UNAUTHENTICATED),
@@ -71,6 +79,14 @@ class TestAuthenticationLifecycle(unittest.TestCase):
 
 
 class TestBrowseStateTransitions(unittest.TestCase):
+    def test_browse_error_markup_is_literal(self):
+        text = browse_state_text(
+            BrowseStatus.ERROR,
+            surface="library",
+            message="[red]untrusted[/red]",
+        )
+        self.assertIn(r"\[red]untrusted\[/red]", text)
+
     def test_loading_success_and_empty_are_distinct(self):
         state = AppState()
         generation = state.begin_browse("library", "library-view")

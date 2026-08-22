@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 from spotify_tui_tool.auth import SCOPES
+from spotify_tui_tool.exceptions import SpotifyRateLimitError
 from spotify_tui_tool.web_api import SpotifyWebAPI, BASE_URL
 
 
@@ -29,6 +30,13 @@ class TestConstruction(unittest.TestCase):
     def test_no_auth_header_when_no_token(self):
         api = SpotifyWebAPI()
         self.assertNotIn("Authorization", api._session.headers)
+
+    @patch("spotify_tui_tool.web_api.get_valid_token", return_value="persisted")
+    def test_constructor_token_is_not_overwritten_by_persisted_token(self, mock_token):
+        api = SpotifyWebAPI(access_token="constructor")
+        api._ensure_auth()
+        self.assertEqual(api._session.headers["Authorization"], "Bearer constructor")
+        mock_token.assert_not_called()
 
     def test_browse_scopes_are_read_only_and_exact(self):
         self.assertEqual(
@@ -164,6 +172,39 @@ class TestAutoRefresh(unittest.TestCase):
                 }
                 result = api._get("/me")
                 self.assertEqual(result["id"], "ok")
+                self.assertEqual(api._session.headers["Authorization"], "Bearer new_tok")
+                mock_refresh.assert_called_once_with("ref1")
+
+    @patch.object(SpotifyWebAPI, "_ensure_auth")
+    def test_401_without_refresh_token_is_not_a_key_error(self, mock_ensure):
+        api = SpotifyWebAPI()
+        response = _mock_response(None, 401)
+        with patch.object(api._session, "get", return_value=response), \
+             patch("spotify_tui_tool.web_api.load_tokens", return_value={}), \
+             self.assertRaises(requests.HTTPError):
+            api._get("/me")
+
+    @patch.object(SpotifyWebAPI, "_ensure_auth")
+    def test_get_retries_once_after_rate_limit(self, mock_ensure):
+        api = SpotifyWebAPI()
+        resp_429 = _mock_response(None, 429)
+        resp_429.headers = {"Retry-After": "0"}
+        resp_ok = _mock_response({"id": "ok"})
+        with patch.object(api._session, "get", side_effect=[resp_429, resp_ok]), \
+             patch("spotify_tui_tool.web_api.time.sleep") as mock_sleep:
+            self.assertEqual(api._get("/me")["id"], "ok")
+        mock_sleep.assert_not_called()
+
+    @patch.object(SpotifyWebAPI, "_ensure_auth")
+    def test_rate_limit_failure_is_bounded_and_specific(self, mock_ensure):
+        api = SpotifyWebAPI()
+        resp_429 = _mock_response(None, 429)
+        resp_429.headers = {"Retry-After": "0"}
+        with patch.object(api._session, "get", side_effect=[resp_429, resp_429]) as mock_get:
+            with self.assertRaises(SpotifyRateLimitError) as context:
+                api._get("/me")
+        self.assertIn("rate limit", str(context.exception).lower())
+        self.assertEqual(mock_get.call_count, 2)
 
 
 if __name__ == "__main__":

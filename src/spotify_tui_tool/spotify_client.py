@@ -92,8 +92,9 @@ class SpotifyClient:
         self._player.set_volume(level)
 
     def seek(self, milliseconds: int) -> None:
-        """Seek to position (ms) in current track."""
-        self._player.run("position", str(milliseconds))
+        """Seek relative to the current position using signed seconds."""
+        seconds = milliseconds / 1000
+        self._player.run("position", f"{seconds:+g}")
 
     def activate_row(self, row: BrowseRow) -> PlaybackResult:
         """Open a playable row through playerctl, preserving its URI exactly."""
