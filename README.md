@@ -76,15 +76,19 @@ python -m spotify_tui_tool.app
 
 ### Running Tests
 
+The supported offline test runner is `unittest`. Coverage, linting, and static
+type checking are not currently configured for this project. Live Spotify,
+`playerctl`, and MPRIS checks are opt-in and depend on the local environment.
+
 ```bash
 # Run all unit tests
-python -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
 
 # Run specific test file
-python -m unittest tests.test_playerctl -v
+.venv/bin/python -m unittest tests.test_playerctl -v
 
-# Run integration tests (requires running Spotify)
-python -m unittest tests.test_integration -v
+# Run live integration checks only when Spotify and playerctl/MPRIS are available
+.venv/bin/python -m unittest tests.test_integration -v
 ```
 
 ### Project Structure

@@ -34,11 +34,6 @@ class TestAppStateDefaults(unittest.TestCase):
         self.assertFalse(state.shuffle)
         self.assertEqual(state.repeat_mode, "off")
 
-    def test_default_queue(self):
-        """Default queue should be empty."""
-        state = AppState()
-        self.assertEqual(len(state.queue), 0)
-
     def test_default_history(self):
         """Default history should be empty."""
         state = AppState()
@@ -63,7 +58,15 @@ class TestSetView(unittest.TestCase):
     def test_all_valid_views(self):
         """All valid views should be accepted."""
         state = AppState()
-        valid_views = {"home", "library", "playlists", "search", "queue", "settings", "help"}
+        valid_views = {
+            "home",
+            "library",
+            "playlists",
+            "search",
+            "settings",
+            "help",
+            "login",
+        }
         for view in valid_views:
             state.set_view(view)
             self.assertEqual(state.current_view, view)
@@ -144,44 +147,6 @@ class TestSidebarSelection(unittest.TestCase):
         state.set_sidebar_selection("sources", 2)
         self.assertEqual(state.sidebar_section, "sources")
         self.assertEqual(state.sidebar_index, 2)
-
-
-class TestQueue(unittest.TestCase):
-    """Queue management."""
-
-    def test_add_to_queue(self):
-        """add_to_queue should append track."""
-        state = AppState()
-        track = TrackInfo(artist="Test", title="Song")
-        state.add_to_queue(track)
-        self.assertEqual(len(state.queue), 1)
-        self.assertEqual(state.queue[0].artist, "Test")
-
-    def test_remove_from_queue(self):
-        """remove_from_queue should remove track by index."""
-        state = AppState()
-        track1 = TrackInfo(artist="A", title="1")
-        track2 = TrackInfo(artist="B", title="2")
-        state.add_to_queue(track1)
-        state.add_to_queue(track2)
-        state.remove_from_queue(0)
-        self.assertEqual(len(state.queue), 1)
-        self.assertEqual(state.queue[0].artist, "B")
-
-    def test_remove_from_queue_invalid_index(self):
-        """remove_from_queue with invalid index should do nothing."""
-        state = AppState()
-        state.add_to_queue(TrackInfo())
-        state.remove_from_queue(5)
-        self.assertEqual(len(state.queue), 1)
-
-    def test_clear_queue(self):
-        """clear_queue should empty the queue."""
-        state = AppState()
-        state.add_to_queue(TrackInfo())
-        state.add_to_queue(TrackInfo())
-        state.clear_queue()
-        self.assertEqual(len(state.queue), 0)
 
 
 class TestHistory(unittest.TestCase):

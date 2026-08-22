@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from spotify_tui_tool.exceptions import PlaybackError, SpotifyNotRunningError
 from spotify_tui_tool.models import PlaybackStatus, TrackInfo
-from spotify_tui_tool.spotify_client import QueueEntry, SpotifyClient
+from spotify_tui_tool.spotify_client import SpotifyClient
 
 
 # ---------------------------------------------------------------------------
@@ -213,32 +213,6 @@ class TestStubs(unittest.TestCase):
         """search returns empty list (stub)."""
         client = SpotifyClient(player=make_mock_player())
         self.assertEqual(client.search("test query"), [])
-
-
-# ---------------------------------------------------------------------------
-# Queue
-# ---------------------------------------------------------------------------
-
-class TestQueue(unittest.TestCase):
-
-    def test_queue_with_playing_track(self):
-        """get_queue returns the current track as a QueueEntry."""
-        client = SpotifyClient(player=make_mock_player())
-        client.poll()
-        queue = client.get_queue()
-        self.assertEqual(len(queue), 1)
-        self.assertEqual(queue[0].artist, "Pink Floyd")
-        self.assertEqual(queue[0].title, "Speak To Me - 2011 Remastered Version")
-        self.assertIsInstance(queue[0], QueueEntry)
-
-    def test_queue_empty_when_no_track(self):
-        """get_queue returns empty list when no track is loaded."""
-        client = SpotifyClient(
-            player=make_mock_player(metadata=EMPTY_META, position="", status="Stopped")
-        )
-        client.poll()
-        queue = client.get_queue()
-        self.assertEqual(queue, [])
 
 
 # ---------------------------------------------------------------------------

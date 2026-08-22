@@ -38,7 +38,15 @@ class TestContentArea(unittest.TestCase):
         self.assertEqual(widget.current_view, "home")
 
     def test_view_content_keys(self):
-        expected = {"home", "library", "playlists", "search", "queue", "settings", "help"}
+        expected = {
+            "home",
+            "library",
+            "playlists",
+            "search",
+            "settings",
+            "help",
+            "login",
+        }
         self.assertEqual(set(ContentArea.VIEW_WIDGETS.keys()), expected)
 
     def test_switch_view(self):

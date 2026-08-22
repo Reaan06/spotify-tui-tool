@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 
 from spotify_tui_tool.app import SpotifyTuiApp, main
 from spotify_tui_tool.exceptions import InvalidURIError, PlaybackError, SpotifyNotRunningError
+from spotify_tui_tool.models import BrowseRow
+from spotify_tui_tool.ui.rows import BrowseRowActivated
 
 
 class TestAppImport(unittest.TestCase):
@@ -104,7 +106,10 @@ class TestAppActions(unittest.TestCase):
         self.app._client = MagicMock()
         self.app._client.play_pause.side_effect = SpotifyNotRunningError()
         self.app.action_play_pause()
-        mock_status.assert_called_with("Spotify is not running", is_error=True)
+        mock_status.assert_called_with(
+            "Playback unavailable: no Spotify MPRIS player is active.",
+            is_error=True,
+        )
 
 
 class TestSearchSubmission(unittest.TestCase):
@@ -116,15 +121,19 @@ class TestSearchSubmission(unittest.TestCase):
 
     @patch.object(SpotifyTuiApp, 'query_one')
     def test_valid_uri_opens(self, mock_query):
-        """A valid URI should be passed to search_service.open_uri."""
-        mock_status = MagicMock()
-        mock_query.return_value = mock_status
-        event = MagicMock()
-        event.value = "spotify:track:6rqhFgbbKwnb9MLmUQDhG6"
-        self.app.on_search_submitted(event)
-        self.app._search_service.open_uri.assert_called_once_with(
-            "spotify:track:6rqhFgbbKwnb9MLmUQDhG6"
+        """A playable stable row should open its stored URI through playerctl."""
+        uri = "spotify:track:6rqhFgbbKwnb9MLmUQDhG6"
+        row = BrowseRow(
+            kind="track",
+            id="6rqhFgbbKwnb9MLmUQDhG6",
+            uri=uri,
+            title="Rendered title",
+            subtitle="Rendered artist",
+            playable=True,
         )
+        self.app._client.player.open_uri = MagicMock()
+        self.app.on_browse_row_activated(BrowseRowActivated(row))
+        self.app._client.player.open_uri.assert_called_once_with(uri)
 
     def test_empty_uri_no_op(self):
         """An empty URI should not call open_uri."""

@@ -37,3 +37,12 @@ class PlaybackError(Exception):
     def __init__(self, message: str, stderr: str = "") -> None:
         self.stderr = stderr or message
         super().__init__(message)
+
+
+def playback_error_message(error: Exception) -> str:
+    """Map transport failures to distinct, honest, retryable copy."""
+    if isinstance(error, PlayerctlNotFoundError):
+        return "Playback unavailable: playerctl is not installed. Try again."
+    if isinstance(error, SpotifyNotRunningError):
+        return "Playback unavailable: no Spotify MPRIS player is active."
+    return f"Playback failed: {error}. Try again."

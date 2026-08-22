@@ -8,15 +8,18 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
-from spotify_tui_tool.models import TrackInfo, PlaybackStatus
+from spotify_tui_tool.models import PlaybackState, TrackInfo
 
 
 class Playbar(Widget):
     """Bottom panel with now-playing info and controls."""
+
+    can_focus = True
 
     DEFAULT_CSS = """
     Playbar {
@@ -24,6 +27,10 @@ class Playbar(Widget):
         width: 100%;
         background: $surface;
         padding: 0 1;
+    }
+
+    Playbar:focus {
+        background: $boost;
     }
 
     #track-info {
@@ -47,6 +54,7 @@ class Playbar(Widget):
     volume: reactive[float] = reactive(0.5)
     shuffle: reactive[bool] = reactive(False)
     repeat_mode: reactive[str] = reactive("off")
+    status_message: reactive[str] = reactive("")
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -74,6 +82,9 @@ class Playbar(Widget):
         """Update display when repeat mode changes."""
         self._update_display()
 
+    def watch_status_message(self, message: str) -> None:
+        self._update_display()
+
     def _update_display(self) -> None:
         """Update all display areas."""
         self._update_track_info()
@@ -84,12 +95,23 @@ class Playbar(Widget):
         """Update track info area."""
         track = self.current_track
         if not track or (not track.artist and not track.title):
-            self.query_one("#track-info").update("[dim]No track playing[/dim]")
+            if track and track.playback_state is PlaybackState.UNAVAILABLE:
+                message = track.playback_message or "Playback unavailable."
+                self.query_one("#track-info").update(message)
+            elif track and track.playback_state is PlaybackState.STOPPED:
+                self.query_one("#track-info").update("[dim]Playback stopped[/dim]")
+            else:
+                self.query_one("#track-info").update("[dim]No track playing[/dim]")
             return
 
-        status_icon = "▶" if self.is_playing else "⏸"
+        if track.playback_state is PlaybackState.STALE:
+            status_icon = "⚠"
+            prefix = "[dim]Stale[/dim] "
+        else:
+            status_icon = "▶" if self.is_playing else "⏸"
+            prefix = ""
         self.query_one("#track-info").update(
-            f"{status_icon} {track.artist} — {track.title}"
+            f"{prefix}{status_icon} {track.artist} — {track.title}"
         )
 
     def _update_progress(self) -> None:
@@ -118,14 +140,18 @@ class Playbar(Widget):
     def _update_controls(self) -> None:
         """Update controls area."""
         vol_pct = int(self.volume * 100)
-        shuffle_icon = "🔀" if self.shuffle else "  "
-        repeat_icon = {"off": "  ", "track": "🔂", "all": "🔁"}.get(self.repeat_mode, "  ")
-
-        self.query_one("#controls-area").update(
-            f"Vol: {vol_pct}% {shuffle_icon} {repeat_icon}"
-        )
+        controls = f"Vol: {vol_pct}%"
+        if self.status_message:
+            controls = f"{controls}\n{self.status_message}"
+        self.query_one("#controls-area").update(controls)
 
     def update_track(self, track: TrackInfo | None, playing: bool) -> None:
         """Update with new track info."""
         self.current_track = track
         self.is_playing = playing
+
+    def set_status(self, message: str) -> None:
+        self.status_message = message
+
+    def on_click(self, event: Click) -> None:
+        self.focus()

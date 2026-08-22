@@ -41,10 +41,11 @@ class TestAppMountsComponents(unittest.TestCase):
         self.assertTrue(expected.issubset(keys), f"Missing bindings: {expected - keys}")
 
     def test_view_key_bindings(self):
-        """Keys 1-6 should be bound for view switching."""
+        """Supported view keys remain bound without exposing queue navigation."""
         keys = {b.key for b in SpotifyTuiApp.BINDINGS}
-        for digit in ("1", "2", "3", "4", "5", "6"):
+        for digit in ("1", "2", "3", "4", "6", "7"):
             self.assertIn(digit, keys, f"Key '{digit}' not bound")
+        self.assertNotIn("5", keys)
 
 
 class TestAppCompose(unittest.TestCase):
@@ -187,13 +188,13 @@ class TestViewSwitching(unittest.TestCase):
 
         asyncio.run(_test())
 
-    def test_switch_to_queue(self):
+    def test_switch_to_queue_is_rejected(self):
         async def _test():
             app = SpotifyTuiApp()
             async with app.run_test():
                 content = app.query_one(ContentArea)
                 await content.switch_view("queue")
-                self.assertEqual(content.current_view, "queue")
+                self.assertEqual(content.current_view, "home")
 
         asyncio.run(_test())
 

@@ -63,11 +63,11 @@ class TestSidebar(unittest.TestCase):
         asyncio.run(_test())
 
     def test_sources_defined(self):
-        self.assertEqual(len(Sidebar.SOURCES), 3)
+        self.assertEqual(len(Sidebar.SOURCES), 1)
         labels = [s[0] for s in Sidebar.SOURCES]
-        self.assertIn("Spotify", labels)
-        self.assertIn("Local", labels)
-        self.assertIn("Radio", labels)
+        self.assertEqual(labels, ["Spotify"])
+        self.assertNotIn("Local", labels)
+        self.assertNotIn("Radio", labels)
 
     def test_library_defined(self):
         self.assertEqual(len(Sidebar.LIBRARY), 3)
@@ -90,8 +90,21 @@ class TestSidebar(unittest.TestCase):
             async with app.run_test():
                 sidebar = app.query_one(Sidebar)
                 items = sidebar.get_all_items()
-                self.assertEqual(len(items), 7)
+                self.assertEqual(len(items), 5)
                 self.assertIsInstance(items[0], SidebarItem)
+        asyncio.run(_test())
+
+    def test_composed_sources_only_render_spotify(self):
+        async def _test():
+            app = _SidebarTestApp()
+            async with app.run_test():
+                sidebar = app.query_one(Sidebar)
+                source_labels = [
+                    item.label_text
+                    for item in sidebar.get_all_items()
+                    if item.section == "sources"
+                ]
+                self.assertEqual(source_labels, ["Spotify"])
         asyncio.run(_test())
 
     def test_move_selection_down(self):
