@@ -1,11 +1,12 @@
 """
 Integration test — validates the tool against a live Spotify instance.
 
-This test only runs when Spotify is actually running.  It is skipped
-automatically if playerctl cannot find a Spotify player.
+This test requires a running Spotify instance and explicit opt-in with
+SPOTIFY_TUI_LIVE=1.
 
 Test runner: python -m unittest tests.test_integration -v
 """
+import os
 import unittest
 
 from spotify_tui_tool.playerctl import PlayerController
@@ -23,7 +24,13 @@ def _spotify_running() -> bool:
         return False
 
 
-@unittest.skipUnless(_spotify_running(), "Spotify is not running — skipping integration tests")
+LIVE_TESTS_ENABLED = os.environ.get("SPOTIFY_TUI_LIVE") == "1"
+
+
+@unittest.skipUnless(
+    LIVE_TESTS_ENABLED and _spotify_running(),
+    "Set SPOTIFY_TUI_LIVE=1 with Spotify running to enable live integration tests",
+)
 class TestPlayerctlIntegration(unittest.TestCase):
     """Live tests against a running Spotify instance."""
 
@@ -57,7 +64,10 @@ class TestPlayerctlIntegration(unittest.TestCase):
             self.fail(f"open_uri raised {type(e).__name__}: {e}")
 
 
-@unittest.skipUnless(_spotify_running(), "Spotify is not running — skipping integration tests")
+@unittest.skipUnless(
+    LIVE_TESTS_ENABLED and _spotify_running(),
+    "Set SPOTIFY_TUI_LIVE=1 with Spotify running to enable live integration tests",
+)
 class TestSearchServiceIntegration(unittest.TestCase):
     """Live tests for SearchService against a running Spotify instance."""
 

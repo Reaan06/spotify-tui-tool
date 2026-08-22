@@ -17,7 +17,7 @@ from spotify_tui_tool.now_playing import (
     extract_track_id,
     build_track_info,
 )
-from spotify_tui_tool.models import TrackInfo, PlaybackStatus
+from spotify_tui_tool.models import PlaybackState, TrackInfo, PlaybackStatus
 from spotify_tui_tool.exceptions import SpotifyNotRunningError
 
 
@@ -284,7 +284,7 @@ class TestTrackChange(unittest.TestCase):
 class TestGracefulDegradation(unittest.TestCase):
 
     def test_failure_retains_last_known(self):
-        """On poll failure, last-known TrackInfo is returned unchanged."""
+        """One miss stays fresh; the second miss marks retained context stale."""
         mock = make_mock_player()
         widget = NowPlaying(player=mock)
         first = widget.poll_once()
@@ -292,9 +292,15 @@ class TestGracefulDegradation(unittest.TestCase):
 
         # Now make all calls fail
         mock.run.side_effect = SpotifyNotRunningError()
-        result = widget.poll_once()
-        self.assertEqual(result.artist, "Pink Floyd")
-        self.assertEqual(result.title, "Speak To Me - 2011 Remastered Version")
+        first_miss = widget.poll_once()
+        self.assertEqual(first_miss.artist, "Pink Floyd")
+        self.assertEqual(first_miss.title, "Speak To Me - 2011 Remastered Version")
+        self.assertEqual(first_miss.playback_state, PlaybackState.FRESH)
+
+        second_miss = widget.poll_once()
+        self.assertEqual(second_miss.artist, "Pink Floyd")
+        self.assertEqual(second_miss.title, "Speak To Me - 2011 Remastered Version")
+        self.assertEqual(second_miss.playback_state, PlaybackState.STALE)
 
     def test_failure_resets_on_recovery(self):
         """After recovery, failure count resets to 0."""

@@ -12,10 +12,16 @@ Design (from exploration.md):
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Optional
 
-from spotify_tui_tool.exceptions import SpotifyNotRunningError
-from spotify_tui_tool.models import PlaybackStatus, TrackInfo
+from spotify_tui_tool.exceptions import (
+    PlaybackError,
+    PlayerctlNotFoundError,
+    SpotifyNotRunningError,
+    playback_error_message,
+)
+from spotify_tui_tool.models import PlaybackState, PlaybackStatus, TrackInfo
 
 
 # ------------------------------------------------------------------
@@ -95,6 +101,11 @@ def build_track_info(metadata: str, position_raw: str, status_raw: str) -> Track
         position_ms=position_ms,
         volume=volume,
         status=status,
+        playback_state=(
+            PlaybackState.STOPPED
+            if status is PlaybackStatus.STOPPED
+            else PlaybackState.FRESH
+        ),
     )
 
 
@@ -110,6 +121,9 @@ MIN_POLL_INTERVAL = 0.5
 
 # Connection-lost threshold (consecutive failures)
 CONNECTION_LOST_THRESHOLD = 5
+
+# A retained track becomes stale only after two missed one-second polls.
+STALE_THRESHOLD = 2
 
 
 class NowPlaying:
@@ -143,24 +157,40 @@ class NowPlaying:
     def connection_lost(self) -> bool:
         return self._connection_lost
 
+    def _poll_failure(self, error: Exception) -> TrackInfo:
+        self._failure_count += 1
+        if self._failure_count >= CONNECTION_LOST_THRESHOLD:
+            self._connection_lost = True
+        message = playback_error_message(error)
+        if self._last_info is not None:
+            if self._failure_count < STALE_THRESHOLD:
+                return self._last_info
+            self._last_info = replace(
+                self._last_info,
+                playback_state=PlaybackState.STALE,
+                playback_message=message,
+            )
+            return self._last_info
+        return TrackInfo(
+            playback_state=PlaybackState.UNAVAILABLE,
+            playback_message=message,
+        )
+
     def poll_once(self) -> TrackInfo:
         """Execute one poll cycle and return the current TrackInfo.
 
-        On failure, returns the last-known TrackInfo unchanged.
+        On the first missed poll, returns the last-known TrackInfo unchanged;
+        after two consecutive misses, it marks retained context as stale.
         On track change, sets the track_changed flag.
         """
         try:
             metadata = self._player.run("metadata", "--format", METADATA_FORMAT)
             position_raw = self._player.run("position")
             status_raw = self._player.run("status")
-        except (SpotifyNotRunningError, Exception):
-            self._failure_count += 1
-            if self._failure_count >= CONNECTION_LOST_THRESHOLD:
-                self._connection_lost = True
-            if self._last_info is not None:
-                return self._last_info
-            # First poll failed — return empty
-            return TrackInfo()
+        except (PlayerctlNotFoundError, SpotifyNotRunningError, PlaybackError) as exc:
+            return self._poll_failure(exc)
+        except Exception as exc:
+            return self._poll_failure(exc)
 
         # Successful poll — reset failure state
         self._failure_count = 0

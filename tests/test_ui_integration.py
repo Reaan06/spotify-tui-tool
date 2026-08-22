@@ -8,6 +8,7 @@ Test runner: python -m unittest discover -s tests -v
 
 import asyncio
 import unittest
+from unittest.mock import MagicMock
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -41,10 +42,11 @@ class TestAppMountsComponents(unittest.TestCase):
         self.assertTrue(expected.issubset(keys), f"Missing bindings: {expected - keys}")
 
     def test_view_key_bindings(self):
-        """Keys 1-6 should be bound for view switching."""
+        """Supported view keys remain bound without exposing queue navigation."""
         keys = {b.key for b in SpotifyTuiApp.BINDINGS}
-        for digit in ("1", "2", "3", "4", "5", "6"):
+        for digit in ("1", "2", "3", "4", "6", "7"):
             self.assertIn(digit, keys, f"Key '{digit}' not bound")
+        self.assertNotIn("5", keys)
 
 
 class TestAppCompose(unittest.TestCase):
@@ -99,9 +101,7 @@ class TestKeybindings(unittest.TestCase):
     def test_space_action(self):
         async def _test():
             app = SpotifyTuiApp()
-            app._player = type("_M", (), {
-                "play_pause": lambda s: None,
-            })()
+            app._client = MagicMock()
             async with app.run_test() as pilot:
                 await pilot.press("space")
 
@@ -110,9 +110,7 @@ class TestKeybindings(unittest.TestCase):
     def test_n_action(self):
         async def _test():
             app = SpotifyTuiApp()
-            app._player = type("_M", (), {
-                "next": lambda s: None,
-            })()
+            app._client = MagicMock()
             async with app.run_test() as pilot:
                 await pilot.press("n")
 
@@ -121,9 +119,7 @@ class TestKeybindings(unittest.TestCase):
     def test_p_action(self):
         async def _test():
             app = SpotifyTuiApp()
-            app._player = type("_M", (), {
-                "previous": lambda s: None,
-            })()
+            app._client = MagicMock()
             async with app.run_test() as pilot:
                 await pilot.press("p")
 
@@ -187,13 +183,13 @@ class TestViewSwitching(unittest.TestCase):
 
         asyncio.run(_test())
 
-    def test_switch_to_queue(self):
+    def test_switch_to_queue_is_rejected(self):
         async def _test():
             app = SpotifyTuiApp()
             async with app.run_test():
                 content = app.query_one(ContentArea)
                 await content.switch_view("queue")
-                self.assertEqual(content.current_view, "queue")
+                self.assertEqual(content.current_view, "home")
 
         asyncio.run(_test())
 

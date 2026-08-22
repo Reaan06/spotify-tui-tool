@@ -37,3 +37,21 @@ class PlaybackError(Exception):
     def __init__(self, message: str, stderr: str = "") -> None:
         self.stderr = stderr or message
         super().__init__(message)
+
+
+class SpotifyRateLimitError(Exception):
+    """Raised when Spotify still rate-limits a bounded retry."""
+
+    def __init__(self, retry_after: float = 0.0) -> None:
+        self.retry_after = retry_after
+        wait = f" Retry after {retry_after:g} seconds." if retry_after else " Try again shortly."
+        super().__init__(f"Spotify rate limit exceeded.{wait}")
+
+
+def playback_error_message(error: Exception) -> str:
+    """Map transport failures to distinct, honest, retryable copy."""
+    if isinstance(error, PlayerctlNotFoundError):
+        return "Playback unavailable: playerctl is not installed. Try again."
+    if isinstance(error, SpotifyNotRunningError):
+        return "Playback unavailable: no Spotify MPRIS player is active."
+    return f"Playback failed: {error}. Try again."
